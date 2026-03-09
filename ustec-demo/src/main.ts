@@ -1,5 +1,6 @@
 import { createChart, CandlestickSeries, ColorType } from 'lightweight-charts';
 import type { CandlestickData, UTCTimestamp } from 'lightweight-charts';
+import { createNYSessionBoxesPrimitiveFromData } from './session-boxes-primitive';
 
 // ============================================
 // 1. CREATE THE CHART (from getting-started ideas)
@@ -91,6 +92,14 @@ async function main() {
   }
   candleSeries.setData(data);
   chart.timeScale().fitContent();
+
+  // NY session boxes: 14:00 → 22:00 UTC. Use times from data so the chart can resolve them.
+  const nyBoxes = createNYSessionBoxesPrimitiveFromData(
+    data as { time: number; low: number; high: number }[]
+  );
+  chart.panes()[0].attachPrimitive(nyBoxes);
+  requestAnimationFrame(() => chart.timeScale().fitContent());
+
   console.log(`Loaded ${data.length} candles`);
 }
 
