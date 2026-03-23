@@ -19,9 +19,48 @@
         height: 100vh;
       }
     </style>
-    <script type="module" crossorigin src="/assets/index-BIa_yHtb.js"></script>
+    <script type="module" crossorigin src="/assets/index-Ca4RJjdo.js"></script>
   </head>
   <body>
+    <div
+      style="
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        z-index: 10;
+        color: #d1d4dc;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-size: 14px;
+        user-select: none;
+        pointer-events: none;
+      "
+    >
+      <div style="pointer-events: auto;">
+        <label>
+          Timeframe:
+          <select
+            id="timeframe"
+            style="
+              margin-left: 8px;
+              background: #0f1520;
+              color: #d1d4dc;
+              border: 1px solid #2a3551;
+              border-radius: 6px;
+              padding: 6px 10px;
+            "
+          >
+            <option value="60">1m</option>
+            <option value="300" selected>5m</option>
+            <option value="900">15m</option>
+            <option value="1800">30m</option>
+            <option value="3600">1H</option>
+            <option value="86400">1D</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="indicators-menu" style="margin-top: 8px; pointer-events: auto;"></div>
+    </div>
     <div id="chart"></div>
   </body>
 </html>
