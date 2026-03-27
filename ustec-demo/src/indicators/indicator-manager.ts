@@ -1,3 +1,4 @@
+import type { UTCTimestamp } from 'lightweight-charts';
 import type { IndicatorController } from './types';
 
 export class IndicatorManager {
@@ -16,6 +17,12 @@ export class IndicatorManager {
   onTimeframeChanged(intervalSeconds: number) {
     for (const c of this._controllers) {
       c.onTimeframe(intervalSeconds);
+    }
+  }
+
+  onReplayFrame(intervalSeconds: number, currentTime: UTCTimestamp | null) {
+    for (const c of this._controllers) {
+      c.onReplayFrame(intervalSeconds, currentTime);
     }
   }
 }

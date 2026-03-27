@@ -152,6 +152,17 @@ async function main() {
 
   const timeframeSelect = document.getElementById('timeframe') as HTMLSelectElement | null;
   if (!timeframeSelect) throw new Error('Missing #timeframe select');
+  const replayPlayBtn = document.getElementById('replay-play') as HTMLButtonElement | null;
+  const replayStepBtn = document.getElementById('replay-step') as HTMLButtonElement | null;
+  const replaySpeedSelect = document.getElementById('replay-speed') as HTMLSelectElement | null;
+  const replayPositionSlider = document.getElementById('replay-position') as HTMLInputElement | null;
+  if (!replayPlayBtn || !replayStepBtn || !replaySpeedSelect || !replayPositionSlider) {
+    throw new Error('Missing replay controls');
+  }
+  const replayPlayButton = replayPlayBtn;
+  const replayStepButton = replayStepBtn;
+  const replaySpeedInput = replaySpeedSelect;
+  const replayPositionInput = replayPositionSlider;
 
   // Cache resampled candles so switching timeframes is instant.
   const timeframesSeconds = [60, 300, 900, 1800, 3600, 86400];
@@ -167,6 +178,7 @@ async function main() {
   const sonicRByIntervalSeconds = new Map<number, SonicRComputed>();
   const entriesByIntervalSeconds = new Map<number, SonicRSignal[]>();
   const wavesByIntervalSeconds = new Map<number, WavePattern[]>();
+  const pivotRightBarsByIntervalSeconds = new Map<number, number>();
   for (const seconds of timeframesSeconds) {
     const candles = resampledByInterval.get(seconds);
     if (!candles) continue;
@@ -176,6 +188,7 @@ async function main() {
 
     // Pivot size in bars should roughly map to ~15 minutes on each side.
     const pivotBars = Math.max(2, Math.round((15 * 60) / seconds));
+    pivotRightBarsByIntervalSeconds.set(seconds, pivotBars);
     const waves = computeSonicRWavePatterns(candles, pivotBars, pivotBars);
     wavesByIntervalSeconds.set(seconds, waves);
 
@@ -189,18 +202,57 @@ async function main() {
     sonicRByIntervalSeconds,
     entriesByIntervalSeconds,
     wavesByIntervalSeconds,
+    resampledByInterval,
+    pivotRightBarsByIntervalSeconds,
     chartContainer!
   );
   const indicatorManager = new IndicatorManager([sonicRIndicator]);
 
   let nyBoxesPrimitive: NYSessionBoxesPrimitive | null = null;
   let currentIntervalSeconds = Number(timeframeSelect.value);
+  let replayCursorIndex = 0;
+  let replaySpeed = Number(replaySpeedInput.value) || 5;
+  let replayTimer: number | null = null;
 
-  function applyTimeframe(intervalSeconds: number) {
+  function getReplayCurrentTime(): UTCTimestamp {
+    return data1m[replayCursorIndex]!.time as UTCTimestamp;
+  }
+
+  function findVisibleCount(candles: CandlestickData[], currentTime: UTCTimestamp): number {
+    const target = currentTime as number;
+    let lo = 0;
+    let hi = candles.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      const t = candles[mid]!.time as number;
+      if (t <= target) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  function updateReplaySliderFromTime() {
+    const maxIndex = Math.max(0, data1m.length - 1);
+    const ratio = maxIndex === 0 ? 0 : replayCursorIndex / maxIndex;
+    replayPositionInput.value = String(Math.max(0, Math.min(1000, Math.round(ratio * 1000))));
+  }
+
+  function setReplayTimeFromSlider() {
+    const slider = Number(replayPositionInput.value);
+    const ratio = Math.max(0, Math.min(1, slider / 1000));
+    const maxIndex = Math.max(0, data1m.length - 1);
+    const nextIndex = Math.round(maxIndex * ratio);
+    replayCursorIndex = Math.max(0, Math.min(maxIndex, nextIndex));
+  }
+
+  function renderCurrentFrame(intervalSeconds: number, fitContent = false) {
     const resampled = resampledByInterval.get(intervalSeconds);
     if (!resampled) return;
 
-    candleSeries.setData(resampled);
+    const replayCurrentTime = getReplayCurrentTime();
+    const visibleCount = findVisibleCount(resampled, replayCurrentTime);
+    const visibleCandles = resampled.slice(0, visibleCount);
+    candleSeries.setData(visibleCandles);
     currentIntervalSeconds = intervalSeconds;
 
     // Rebuild NY session boxes so the x/y mapping matches the new candles.
@@ -208,22 +260,53 @@ async function main() {
     if (nyBoxesPrimitive) pane.detachPrimitive(nyBoxesPrimitive);
 
     nyBoxesPrimitive = createNYSessionBoxesPrimitiveFromData(
-      resampled as { time: number; low: number; high: number }[]
+      visibleCandles as { time: number; low: number; high: number }[]
     );
     pane.attachPrimitive(nyBoxesPrimitive);
 
     // Update overlays for enabled indicators (Sonic R, etc.)
-    indicatorManager.onTimeframeChanged(intervalSeconds);
+    indicatorManager.onReplayFrame(intervalSeconds, replayCurrentTime);
 
-    requestAnimationFrame(() => chart.timeScale().fitContent());
+    if (fitContent) {
+      requestAnimationFrame(() => chart.timeScale().fitContent());
+    }
+  }
+
+  function stopReplay() {
+    if (replayTimer != null) {
+      window.clearInterval(replayTimer);
+      replayTimer = null;
+    }
+    replayPlayButton.textContent = 'Play';
+  }
+
+  function stepReplay() {
+    replayCursorIndex = Math.min(replayCursorIndex + 1, data1m.length - 1);
+    updateReplaySliderFromTime();
+    renderCurrentFrame(currentIntervalSeconds, false);
+    if (replayCursorIndex >= data1m.length - 1) {
+      stopReplay();
+    }
+  }
+
+  function startReplay() {
+    stopReplay();
+    replayTimer = window.setInterval(() => {
+      for (let i = 0; i < replaySpeed; i++) {
+        stepReplay();
+        if (replayCursorIndex >= data1m.length - 1) break;
+      }
+    }, 250);
+    replayPlayButton.textContent = 'Pause';
   }
 
   // Initial load based on dropdown.
-  applyTimeframe(currentIntervalSeconds);
+  updateReplaySliderFromTime();
+  renderCurrentFrame(currentIntervalSeconds, true);
 
   timeframeSelect.addEventListener('change', () => {
     const nextSeconds = Number(timeframeSelect.value);
-    applyTimeframe(nextSeconds);
+    renderCurrentFrame(nextSeconds, true);
   });
 
   // Build extensible indicator toggle menu (TradingView-like).
@@ -285,6 +368,24 @@ async function main() {
     if (!el) continue;
     indicatorManager.setEnabled(def.id, el.checked);
   }
+
+  replayPlayButton.addEventListener('click', () => {
+    if (replayTimer == null) startReplay();
+    else stopReplay();
+  });
+  replayStepButton.addEventListener('click', () => {
+    stopReplay();
+    stepReplay();
+  });
+  replaySpeedInput.addEventListener('change', () => {
+    replaySpeed = Math.max(1, Number(replaySpeedInput.value) || 1);
+    if (replayTimer != null) startReplay();
+  });
+  replayPositionInput.addEventListener('input', () => {
+    stopReplay();
+    setReplayTimeFromSlider();
+    renderCurrentFrame(currentIntervalSeconds, false);
+  });
 
   console.log(`Loaded ${data1m.length} 1m candles`);
 }

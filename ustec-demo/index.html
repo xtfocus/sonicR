@@ -58,6 +58,66 @@
         </label>
       </div>
 
+      <div
+        id="replay-controls"
+        style="
+          margin-top: 8px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          pointer-events: auto;
+        "
+      >
+        <button
+          id="replay-play"
+          style="
+            background: #0f1520;
+            color: #d1d4dc;
+            border: 1px solid #2a3551;
+            border-radius: 6px;
+            padding: 4px 10px;
+            cursor: pointer;
+          "
+        >
+          Play
+        </button>
+        <button
+          id="replay-step"
+          style="
+            background: #0f1520;
+            color: #d1d4dc;
+            border: 1px solid #2a3551;
+            border-radius: 6px;
+            padding: 4px 10px;
+            cursor: pointer;
+          "
+        >
+          Step
+        </button>
+        <label>
+          Speed:
+          <select
+            id="replay-speed"
+            style="
+              margin-left: 6px;
+              background: #0f1520;
+              color: #d1d4dc;
+              border: 1px solid #2a3551;
+              border-radius: 6px;
+              padding: 4px 8px;
+            "
+          >
+            <option value="1">1x</option>
+            <option value="2">2x</option>
+            <option value="5" selected>5x</option>
+            <option value="10">10x</option>
+          </select>
+        </label>
+      </div>
+      <div style="margin-top: 6px; pointer-events: auto;">
+        <input id="replay-position" type="range" min="0" max="1000" value="0" style="width: 280px;" />
+      </div>
+
       <div id="indicators-menu" style="margin-top: 8px; pointer-events: auto;"></div>
     </div>
     <div id="chart"></div>

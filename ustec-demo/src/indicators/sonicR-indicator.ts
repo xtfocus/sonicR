@@ -1,6 +1,7 @@
 import { LineSeries } from 'lightweight-charts';
 import { createSeriesMarkers } from 'lightweight-charts';
 import type {
+  CandlestickData,
   IChartApiBase,
   ISeriesApi,
   ISeriesMarkersPluginApi,
@@ -24,6 +25,7 @@ export class SonicRIndicator implements IndicatorController {
   private _enabled = false;
   private _showWaves = true;
   private _lastIntervalSeconds = 60;
+  private _lastReplayTime: UTCTimestamp | null = null;
 
   private _emaLow34Series!: ReturnType<IChartApiBase<Time>['addSeries']>;
   private _emaHigh34Series!: ReturnType<IChartApiBase<Time>['addSeries']>;
@@ -42,6 +44,8 @@ export class SonicRIndicator implements IndicatorController {
     private _sonicRByIntervalSeconds: Map<number, SonicRComputed>,
     private _entriesByIntervalSeconds: Map<number, SonicRSignal[]>,
     private _wavesByIntervalSeconds: Map<number, WavePattern[]>,
+    private _candlesByIntervalSeconds: Map<number, CandlestickData[]>,
+    private _pivotRightBarsByIntervalSeconds: Map<number, number>,
     private _chartContainer: HTMLElement
   ) {
     // NOTE: do NOT create series in field initializers. `useDefineForClassFields`
@@ -123,16 +127,22 @@ export class SonicRIndicator implements IndicatorController {
       return;
     }
 
-    this.onTimeframe(this._lastIntervalSeconds);
+    this.onReplayFrame(this._lastIntervalSeconds, this._lastReplayTime);
   }
 
   setShowWaves(showWaves: boolean): void {
     this._showWaves = showWaves;
-    if (this._enabled) this.onTimeframe(this._lastIntervalSeconds);
+    if (this._enabled) this.onReplayFrame(this._lastIntervalSeconds, this._lastReplayTime);
   }
 
   onTimeframe(intervalSeconds: number): void {
     this._lastIntervalSeconds = intervalSeconds;
+    this.onReplayFrame(intervalSeconds, null);
+  }
+
+  onReplayFrame(intervalSeconds: number, currentTime: UTCTimestamp | null): void {
+    this._lastIntervalSeconds = intervalSeconds;
+    this._lastReplayTime = currentTime;
     if (!this._enabled) return;
 
     const computed = this._sonicRByIntervalSeconds.get(intervalSeconds);
@@ -140,25 +150,31 @@ export class SonicRIndicator implements IndicatorController {
 
     const pane = this._chart.panes()[0];
 
-    this._emaLow34Series.setData(computed.emaLow34 as any);
-    this._emaHigh34Series.setData(computed.emaHigh34 as any);
-    this._emaClose34Series.setData(computed.emaClose34 as any);
-    this._ema89Series.setData(computed.ema89 as any);
+    const emaLow34 = this._filterByTime(computed.emaLow34, currentTime);
+    const emaHigh34 = this._filterByTime(computed.emaHigh34, currentTime);
+    const emaClose34 = this._filterByTime(computed.emaClose34, currentTime);
+    const ema89 = this._filterByTime(computed.ema89, currentTime);
+    const dragonFillPoints = this._filterByTime(computed.dragonFillPoints, currentTime);
+
+    this._emaLow34Series.setData(emaLow34 as any);
+    this._emaHigh34Series.setData(emaHigh34 as any);
+    this._emaClose34Series.setData(emaClose34 as any);
+    this._ema89Series.setData(ema89 as any);
 
     if (this._dragonFillPrimitive) pane.detachPrimitive(this._dragonFillPrimitive);
-    this._dragonFillPrimitive = new DragonFillPrimitive(computed.dragonFillPoints);
+    this._dragonFillPrimitive = new DragonFillPrimitive(dragonFillPoints);
     pane.attachPrimitive(this._dragonFillPrimitive);
 
     if (this._wavesPrimitive) pane.detachPrimitive(this._wavesPrimitive);
     this._wavesPrimitive = null;
-    const waves = this._wavesByIntervalSeconds.get(intervalSeconds) ?? [];
+    const waves = this._visibleWaves(intervalSeconds, currentTime);
     if (this._showWaves) {
       this._wavesPrimitive = new SonicRWavesPrimitive(waves);
       pane.attachPrimitive(this._wavesPrimitive);
     }
 
     // Render entry triggers (BUY/SELL) and optional wave leg labels.
-    const entries = this._entriesByIntervalSeconds.get(intervalSeconds) ?? [];
+    const entries = this._visibleEntries(intervalSeconds, currentTime, waves);
     this._signalsByTime = new Map(entries.map((s) => [s.time as number, s]));
     const entryMarkers = entries.map((s) => {
       const isBuy = s.side === 'buy';
@@ -204,6 +220,54 @@ export class SonicRIndicator implements IndicatorController {
     const markers = [...entryMarkers, ...waveMarkers];
     markers.sort((a, b) => (a.time as number) - (b.time as number));
     this._seriesMarkersPlugin.setMarkers(markers);
+  }
+
+  private _filterByTime<T extends { time: UTCTimestamp }>(
+    values: T[],
+    currentTime: UTCTimestamp | null
+  ): T[] {
+    if (currentTime == null) return values;
+    return values.filter((x) => (x.time as number) <= (currentTime as number));
+  }
+
+  private _visibleWaves(intervalSeconds: number, currentTime: UTCTimestamp | null): WavePattern[] {
+    const waves = this._wavesByIntervalSeconds.get(intervalSeconds) ?? [];
+    if (currentTime == null) return waves;
+
+    const candles = this._candlesByIntervalSeconds.get(intervalSeconds) ?? [];
+    const rightBars = this._pivotRightBarsByIntervalSeconds.get(intervalSeconds) ?? 2;
+    const current = currentTime as number;
+    return waves.filter((w) => {
+      const confirmationIndex = w.leg3End.index + rightBars;
+      const confirmationCandle = candles[confirmationIndex];
+      if (!confirmationCandle) return false;
+      return (confirmationCandle.time as number) <= current;
+    });
+  }
+
+  private _visibleEntries(
+    intervalSeconds: number,
+    currentTime: UTCTimestamp | null,
+    visibleWaves: WavePattern[]
+  ): SonicRSignal[] {
+    const entries = this._entriesByIntervalSeconds.get(intervalSeconds) ?? [];
+    if (currentTime == null) return entries;
+
+    const visibleWaveSet = new Set(visibleWaves);
+    const waves = this._wavesByIntervalSeconds.get(intervalSeconds) ?? [];
+    const current = currentTime as number;
+
+    return entries.filter((entry) => {
+      if ((entry.time as number) > current) return false;
+      const ownerWave = waves.find((w) => {
+        const start = w.leg2End.time as number;
+        const end = w.leg3End.time as number;
+        const t = entry.time as number;
+        return t >= start && t <= end && (entry.side === 'buy' ? w.direction === 'bull' : w.direction === 'bear');
+      });
+      if (!ownerWave) return true;
+      return visibleWaveSet.has(ownerWave);
+    });
   }
 
   private _onCrosshairMove(param: {
