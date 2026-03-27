@@ -152,17 +152,31 @@ async function main() {
 
   const timeframeSelect = document.getElementById('timeframe') as HTMLSelectElement | null;
   if (!timeframeSelect) throw new Error('Missing #timeframe select');
+  const replayModeToggleBtn = document.getElementById('replay-mode-toggle') as HTMLButtonElement | null;
   const replayPlayBtn = document.getElementById('replay-play') as HTMLButtonElement | null;
   const replayStepBtn = document.getElementById('replay-step') as HTMLButtonElement | null;
   const replaySpeedSelect = document.getElementById('replay-speed') as HTMLSelectElement | null;
   const replayPositionSlider = document.getElementById('replay-position') as HTMLInputElement | null;
-  if (!replayPlayBtn || !replayStepBtn || !replaySpeedSelect || !replayPositionSlider) {
+  const replayJumpDatetimeInput = document.getElementById('replay-jump-datetime') as HTMLInputElement | null;
+  const replayControlsWrap = document.getElementById('replay-controls') as HTMLDivElement | null;
+  if (
+    !replayModeToggleBtn ||
+    !replayPlayBtn ||
+    !replayStepBtn ||
+    !replaySpeedSelect ||
+    !replayPositionSlider ||
+    !replayJumpDatetimeInput ||
+    !replayControlsWrap
+  ) {
     throw new Error('Missing replay controls');
   }
+  const replayModeToggleButton = replayModeToggleBtn;
   const replayPlayButton = replayPlayBtn;
   const replayStepButton = replayStepBtn;
   const replaySpeedInput = replaySpeedSelect;
   const replayPositionInput = replayPositionSlider;
+  const replayJumpDatetime = replayJumpDatetimeInput;
+  const replayControls = replayControlsWrap;
 
   // Cache resampled candles so switching timeframes is instant.
   const timeframesSeconds = [60, 300, 900, 1800, 3600, 86400];
@@ -210,9 +224,12 @@ async function main() {
 
   let nyBoxesPrimitive: NYSessionBoxesPrimitive | null = null;
   let currentIntervalSeconds = Number(timeframeSelect.value);
+  let isReplayMode = false;
   let replayCursorIndex = 0;
   let replaySpeed = Number(replaySpeedInput.value) || 5;
   let replayTimer: number | null = null;
+  let lastReplayRenderedInterval: number | null = null;
+  let lastReplayRenderedVisibleCount = 0;
 
   function getReplayCurrentTime(): UTCTimestamp {
     return data1m[replayCursorIndex]!.time as UTCTimestamp;
@@ -231,10 +248,69 @@ async function main() {
     return lo;
   }
 
+  function findIndexAtOrBeforeTime(targetTimeSec: number): number {
+    let lo = 0;
+    let hi = data1m.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      const t = data1m[mid]!.time as number;
+      if (t <= targetTimeSec) lo = mid + 1;
+      else hi = mid;
+    }
+    return Math.max(0, lo - 1);
+  }
+
+  function formatJumpDateTime(sec: number): string {
+    const d = new Date(sec * 1000);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function parseJumpDateTime(value: string): number | null {
+    const m = value.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+
+    const day = Number(m[1]);
+    const month = Number(m[2]);
+    const year = Number(m[3]);
+    const hour = Number(m[4]);
+    const minute = Number(m[5]);
+    if (
+      !Number.isInteger(day) ||
+      !Number.isInteger(month) ||
+      !Number.isInteger(year) ||
+      !Number.isInteger(hour) ||
+      !Number.isInteger(minute)
+    ) {
+      return null;
+    }
+    if (month < 1 || month > 12 || day < 1 || day > 31 || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+      return null;
+    }
+
+    const dt = new Date(year, month - 1, day, hour, minute, 0, 0);
+    if (
+      dt.getFullYear() !== year ||
+      dt.getMonth() !== month - 1 ||
+      dt.getDate() !== day ||
+      dt.getHours() !== hour ||
+      dt.getMinutes() !== minute
+    ) {
+      return null;
+    }
+    return Math.floor(dt.getTime() / 1000);
+  }
+
+  function syncJumpInputFromCursor() {
+    const currentSec = data1m[replayCursorIndex]!.time as number;
+    replayJumpDatetime.value = formatJumpDateTime(currentSec);
+  }
+
   function updateReplaySliderFromTime() {
     const maxIndex = Math.max(0, data1m.length - 1);
     const ratio = maxIndex === 0 ? 0 : replayCursorIndex / maxIndex;
     replayPositionInput.value = String(Math.max(0, Math.min(1000, Math.round(ratio * 1000))));
+    syncJumpInputFromCursor();
   }
 
   function setReplayTimeFromSlider() {
@@ -245,26 +321,49 @@ async function main() {
     replayCursorIndex = Math.max(0, Math.min(maxIndex, nextIndex));
   }
 
-  function renderCurrentFrame(intervalSeconds: number, fitContent = false) {
+  function rebuildNyBoxes(visibleCandles: CandlestickData[]) {
+    const pane = chart.panes()[0];
+    if (nyBoxesPrimitive) pane.detachPrimitive(nyBoxesPrimitive);
+    nyBoxesPrimitive = createNYSessionBoxesPrimitiveFromData(
+      visibleCandles as { time: number; low: number; high: number }[]
+    );
+    pane.attachPrimitive(nyBoxesPrimitive);
+  }
+
+  function renderCurrentFrame(intervalSeconds: number, fitContent = false, force = false) {
     const resampled = resampledByInterval.get(intervalSeconds);
     if (!resampled) return;
 
     const replayCurrentTime = getReplayCurrentTime();
     const visibleCount = findVisibleCount(resampled, replayCurrentTime);
     const visibleCandles = resampled.slice(0, visibleCount);
-    candleSeries.setData(visibleCandles);
+
+    const sameInterval = lastReplayRenderedInterval === intervalSeconds;
+    const forwardIncremental =
+      sameInterval &&
+      !force &&
+      visibleCount >= lastReplayRenderedVisibleCount &&
+      visibleCount - lastReplayRenderedVisibleCount <= 16;
+
+    // If replay source advanced but this timeframe has no new bar yet (e.g. 5m while stepping 1m),
+    // skip heavy redraw work.
+    if (!force && sameInterval && visibleCount === lastReplayRenderedVisibleCount) {
+      return;
+    }
+
+    if (forwardIncremental) {
+      for (let i = lastReplayRenderedVisibleCount; i < visibleCount; i++) {
+        const next = resampled[i];
+        if (next) candleSeries.update(next);
+      }
+    } else {
+      candleSeries.setData(visibleCandles);
+    }
     currentIntervalSeconds = intervalSeconds;
+    lastReplayRenderedInterval = intervalSeconds;
+    lastReplayRenderedVisibleCount = visibleCount;
 
-    // Rebuild NY session boxes so the x/y mapping matches the new candles.
-    const pane = chart.panes()[0];
-    if (nyBoxesPrimitive) pane.detachPrimitive(nyBoxesPrimitive);
-
-    nyBoxesPrimitive = createNYSessionBoxesPrimitiveFromData(
-      visibleCandles as { time: number; low: number; high: number }[]
-    );
-    pane.attachPrimitive(nyBoxesPrimitive);
-
-    // Update overlays for enabled indicators (Sonic R, etc.)
+    rebuildNyBoxes(visibleCandles);
     indicatorManager.onReplayFrame(intervalSeconds, replayCurrentTime);
 
     if (fitContent) {
@@ -272,17 +371,39 @@ async function main() {
     }
   }
 
-  function stopReplay() {
+  function renderFullFrame(intervalSeconds: number, fitContent = false) {
+    const resampled = resampledByInterval.get(intervalSeconds);
+    if (!resampled) return;
+
+    candleSeries.setData(resampled);
+    currentIntervalSeconds = intervalSeconds;
+
+    rebuildNyBoxes(resampled);
+
+    indicatorManager.onTimeframeChanged(intervalSeconds);
+    if (fitContent) {
+      requestAnimationFrame(() => chart.timeScale().fitContent());
+    }
+  }
+
+  function renderView(intervalSeconds: number, fitContent = false) {
+    if (isReplayMode) renderCurrentFrame(intervalSeconds, fitContent);
+    else renderFullFrame(intervalSeconds, fitContent);
+  }
+
+  function stopReplay(syncUi = true) {
     if (replayTimer != null) {
-      window.clearInterval(replayTimer);
+      window.clearTimeout(replayTimer);
       replayTimer = null;
     }
+    if (syncUi) updateReplaySliderFromTime();
     replayPlayButton.textContent = 'Play';
   }
 
-  function stepReplay() {
+  function stepReplay(shouldSyncUi = true) {
+    if (!isReplayMode) return;
     replayCursorIndex = Math.min(replayCursorIndex + 1, data1m.length - 1);
-    updateReplaySliderFromTime();
+    if (shouldSyncUi) updateReplaySliderFromTime();
     renderCurrentFrame(currentIntervalSeconds, false);
     if (replayCursorIndex >= data1m.length - 1) {
       stopReplay();
@@ -290,23 +411,94 @@ async function main() {
   }
 
   function startReplay() {
+    if (!isReplayMode) return;
     stopReplay();
-    replayTimer = window.setInterval(() => {
-      for (let i = 0; i < replaySpeed; i++) {
-        stepReplay();
-        if (replayCursorIndex >= data1m.length - 1) break;
+    focusReplayCursor();
+    const stepDelayMs = Math.max(16, Math.round(1000 / Math.max(1, replaySpeed)));
+    const tick = () => {
+      if (!isReplayMode || replayTimer == null) return;
+      stepReplay(true);
+      if (replayCursorIndex >= data1m.length - 1) {
+        stopReplay();
+        return;
       }
-    }, 250);
+      replayTimer = window.setTimeout(tick, stepDelayMs);
+    };
+    replayTimer = window.setTimeout(tick, stepDelayMs);
     replayPlayButton.textContent = 'Pause';
+  }
+
+  function stepReplayOneBarCurrentTimeframe() {
+    const resampled = resampledByInterval.get(currentIntervalSeconds);
+    if (!resampled || resampled.length === 0) return;
+
+    const replayCurrentTime = getReplayCurrentTime();
+    const visibleCount = findVisibleCount(resampled, replayCurrentTime);
+    if (visibleCount >= resampled.length) {
+      stopReplay();
+      return;
+    }
+
+    const nextBar = resampled[visibleCount];
+    if (!nextBar) return;
+    replayCursorIndex = findIndexAtOrBeforeTime(nextBar.time as number);
+    updateReplaySliderFromTime();
+    renderCurrentFrame(currentIntervalSeconds, false, true);
+  }
+
+  function focusReplayCursor() {
+    const resampled = resampledByInterval.get(currentIntervalSeconds);
+    if (!resampled || resampled.length === 0) return;
+
+    const replayCurrentTime = getReplayCurrentTime();
+    const visibleCount = findVisibleCount(resampled, replayCurrentTime);
+    const currentIndex = Math.max(0, visibleCount - 1);
+    const lookbackBars = 120;
+    const fromIndex = Math.max(0, currentIndex - lookbackBars);
+    const from = resampled[fromIndex]?.time as UTCTimestamp | undefined;
+    const to = resampled[currentIndex]?.time as UTCTimestamp | undefined;
+    if (from == null || to == null) return;
+
+    chart.timeScale().setVisibleRange({ from, to });
+  }
+
+  function setReplayControlsEnabled(enabled: boolean) {
+    replayPlayButton.disabled = !enabled;
+    replayStepButton.disabled = !enabled;
+    replaySpeedInput.disabled = !enabled;
+    replayPositionInput.disabled = !enabled;
+    replayJumpDatetime.disabled = !enabled;
+    replayControls.style.opacity = enabled ? '1' : '0.6';
+  }
+
+  function enterReplayMode() {
+    isReplayMode = true;
+    replayModeToggleButton.textContent = 'Exit Replay';
+    setReplayControlsEnabled(true);
+    updateReplaySliderFromTime();
+    lastReplayRenderedInterval = null;
+    lastReplayRenderedVisibleCount = 0;
+    renderCurrentFrame(currentIntervalSeconds, true, true);
+  }
+
+  function exitReplayMode() {
+    stopReplay();
+    isReplayMode = false;
+    replayModeToggleButton.textContent = 'Enter Replay';
+    setReplayControlsEnabled(false);
+    lastReplayRenderedInterval = null;
+    lastReplayRenderedVisibleCount = 0;
+    renderFullFrame(currentIntervalSeconds, true);
   }
 
   // Initial load based on dropdown.
   updateReplaySliderFromTime();
-  renderCurrentFrame(currentIntervalSeconds, true);
+  setReplayControlsEnabled(false);
+  renderView(currentIntervalSeconds, true);
 
   timeframeSelect.addEventListener('change', () => {
     const nextSeconds = Number(timeframeSelect.value);
-    renderCurrentFrame(nextSeconds, true);
+    renderView(nextSeconds, true);
   });
 
   // Build extensible indicator toggle menu (TradingView-like).
@@ -370,21 +562,44 @@ async function main() {
   }
 
   replayPlayButton.addEventListener('click', () => {
+    if (!isReplayMode) return;
     if (replayTimer == null) startReplay();
     else stopReplay();
   });
   replayStepButton.addEventListener('click', () => {
+    if (!isReplayMode) return;
     stopReplay();
-    stepReplay();
+    stepReplayOneBarCurrentTimeframe();
   });
   replaySpeedInput.addEventListener('change', () => {
+    if (!isReplayMode) return;
     replaySpeed = Math.max(1, Number(replaySpeedInput.value) || 1);
     if (replayTimer != null) startReplay();
   });
   replayPositionInput.addEventListener('input', () => {
-    stopReplay();
+    if (!isReplayMode) return;
+    stopReplay(false);
     setReplayTimeFromSlider();
-    renderCurrentFrame(currentIntervalSeconds, false);
+    syncJumpInputFromCursor();
+    renderCurrentFrame(currentIntervalSeconds, false, true);
+  });
+  replayModeToggleButton.addEventListener('click', () => {
+    if (isReplayMode) exitReplayMode();
+    else enterReplayMode();
+  });
+  replayJumpDatetime.addEventListener('change', () => {
+    if (!isReplayMode) return;
+    const value = replayJumpDatetime.value;
+    if (!value) return;
+    const sec = parseJumpDateTime(value);
+    if (sec == null) {
+      syncJumpInputFromCursor();
+      return;
+    }
+    replayCursorIndex = findIndexAtOrBeforeTime(sec);
+    stopReplay();
+    updateReplaySliderFromTime();
+    renderCurrentFrame(currentIntervalSeconds, false, true);
   });
 
   console.log(`Loaded ${data1m.length} 1m candles`);

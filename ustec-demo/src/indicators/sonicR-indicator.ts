@@ -26,6 +26,8 @@ export class SonicRIndicator implements IndicatorController {
   private _showWaves = true;
   private _lastIntervalSeconds = 60;
   private _lastReplayTime: UTCTimestamp | null = null;
+  private _lastRenderedIntervalSeconds: number | null = null;
+  private _lastRenderedReplayTime: UTCTimestamp | null = null;
 
   private _emaLow34Series!: ReturnType<IChartApiBase<Time>['addSeries']>;
   private _emaHigh34Series!: ReturnType<IChartApiBase<Time>['addSeries']>;
@@ -124,9 +126,13 @@ export class SonicRIndicator implements IndicatorController {
       this._hideTooltip();
 
       this._seriesMarkersPlugin.setMarkers([]);
+      this._lastRenderedIntervalSeconds = null;
+      this._lastRenderedReplayTime = null;
       return;
     }
 
+    this._lastRenderedIntervalSeconds = null;
+    this._lastRenderedReplayTime = null;
     this.onReplayFrame(this._lastIntervalSeconds, this._lastReplayTime);
   }
 
@@ -144,17 +150,23 @@ export class SonicRIndicator implements IndicatorController {
     this._lastIntervalSeconds = intervalSeconds;
     this._lastReplayTime = currentTime;
     if (!this._enabled) return;
+    if (
+      this._lastRenderedIntervalSeconds === intervalSeconds &&
+      (this._lastRenderedReplayTime as number | null) === (currentTime as number | null)
+    ) {
+      return;
+    }
 
     const computed = this._sonicRByIntervalSeconds.get(intervalSeconds);
     if (!computed) return;
 
     const pane = this._chart.panes()[0];
 
-    const emaLow34 = this._filterByTime(computed.emaLow34, currentTime);
-    const emaHigh34 = this._filterByTime(computed.emaHigh34, currentTime);
-    const emaClose34 = this._filterByTime(computed.emaClose34, currentTime);
-    const ema89 = this._filterByTime(computed.ema89, currentTime);
-    const dragonFillPoints = this._filterByTime(computed.dragonFillPoints, currentTime);
+    const emaLow34 = this._sliceByTime(computed.emaLow34, currentTime);
+    const emaHigh34 = this._sliceByTime(computed.emaHigh34, currentTime);
+    const emaClose34 = this._sliceByTime(computed.emaClose34, currentTime);
+    const ema89 = this._sliceByTime(computed.ema89, currentTime);
+    const dragonFillPoints = this._sliceByTime(computed.dragonFillPoints, currentTime);
 
     this._emaLow34Series.setData(emaLow34 as any);
     this._emaHigh34Series.setData(emaHigh34 as any);
@@ -220,14 +232,24 @@ export class SonicRIndicator implements IndicatorController {
     const markers = [...entryMarkers, ...waveMarkers];
     markers.sort((a, b) => (a.time as number) - (b.time as number));
     this._seriesMarkersPlugin.setMarkers(markers);
+    this._lastRenderedIntervalSeconds = intervalSeconds;
+    this._lastRenderedReplayTime = currentTime;
   }
 
-  private _filterByTime<T extends { time: UTCTimestamp }>(
+  private _sliceByTime<T extends { time: UTCTimestamp }>(
     values: T[],
     currentTime: UTCTimestamp | null
   ): T[] {
     if (currentTime == null) return values;
-    return values.filter((x) => (x.time as number) <= (currentTime as number));
+    const cutoff = currentTime as number;
+    let lo = 0;
+    let hi = values.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if ((values[mid]!.time as number) <= cutoff) lo = mid + 1;
+      else hi = mid;
+    }
+    return values.slice(0, lo);
   }
 
   private _visibleWaves(intervalSeconds: number, currentTime: UTCTimestamp | null): WavePattern[] {
