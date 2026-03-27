@@ -9,14 +9,17 @@ import type { SonicRComputed } from './sonic-r-ema';
 import { indicatorDefinitions } from './indicators/registry';
 import { IndicatorManager } from './indicators/indicator-manager';
 import { SonicRIndicator } from './indicators/sonicR-indicator';
-import { computeSonicRWavePatterns } from './sonic-r-wave';
+import { computeSonicRWavePatterns, type WavePattern } from './sonic-r-wave';
 import { computeSonicREntries, type SonicRSignal } from './sonic-r-entry';
 
 // ============================================
 // 1. CREATE THE CHART (from getting-started ideas)
 // ============================================
 
-const chart = createChart(document.getElementById('chart')!, {
+const chartContainer = document.getElementById('chart');
+if (!chartContainer) throw new Error('Missing #chart container');
+
+const chart = createChart(chartContainer, {
   autoSize: true,
   layout: {
     background: { type: ColorType.Solid, color: '#131722' },
@@ -163,6 +166,7 @@ async function main() {
   // Precompute Sonic R for all timeframes, so enabling/disabling is instant.
   const sonicRByIntervalSeconds = new Map<number, SonicRComputed>();
   const entriesByIntervalSeconds = new Map<number, SonicRSignal[]>();
+  const wavesByIntervalSeconds = new Map<number, WavePattern[]>();
   for (const seconds of timeframesSeconds) {
     const candles = resampledByInterval.get(seconds);
     if (!candles) continue;
@@ -173,12 +177,20 @@ async function main() {
     // Pivot size in bars should roughly map to ~15 minutes on each side.
     const pivotBars = Math.max(2, Math.round((15 * 60) / seconds));
     const waves = computeSonicRWavePatterns(candles, pivotBars, pivotBars);
+    wavesByIntervalSeconds.set(seconds, waves);
 
     const entries = computeSonicREntries(candles, sonic, waves);
     entriesByIntervalSeconds.set(seconds, entries);
   }
 
-  const sonicRIndicator = new SonicRIndicator(chart, candleSeries, sonicRByIntervalSeconds, entriesByIntervalSeconds);
+  const sonicRIndicator = new SonicRIndicator(
+    chart,
+    candleSeries,
+    sonicRByIntervalSeconds,
+    entriesByIntervalSeconds,
+    wavesByIntervalSeconds,
+    chartContainer!
+  );
   const indicatorManager = new IndicatorManager([sonicRIndicator]);
 
   let nyBoxesPrimitive: NYSessionBoxesPrimitive | null = null;
@@ -240,6 +252,31 @@ async function main() {
     label.appendChild(document.createTextNode(def.label));
 
     indicatorsMenu.appendChild(label);
+
+    if (def.id === 'sonicR') {
+      const waveWrap = document.createElement('div');
+      waveWrap.style.margin = '2px 0 0 22px';
+
+      const waveLabel = document.createElement('label');
+      waveLabel.style.display = 'inline-flex';
+      waveLabel.style.alignItems = 'center';
+      waveLabel.style.cursor = 'pointer';
+      waveLabel.style.opacity = '0.9';
+
+      const waveCheckbox = document.createElement('input');
+      waveCheckbox.type = 'checkbox';
+      waveCheckbox.id = 'toggle-sonicR-waves';
+      waveCheckbox.checked = true;
+      waveCheckbox.style.marginRight = '8px';
+      waveCheckbox.addEventListener('change', () => {
+        sonicRIndicator.setShowWaves(waveCheckbox.checked);
+      });
+
+      waveLabel.appendChild(waveCheckbox);
+      waveLabel.appendChild(document.createTextNode('Show waves/legs'));
+      waveWrap.appendChild(waveLabel);
+      indicatorsMenu.appendChild(waveWrap);
+    }
   }
 
   // Apply default enabled/disabled state after menu build.

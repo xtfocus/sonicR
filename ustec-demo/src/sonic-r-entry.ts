@@ -6,6 +6,16 @@ export type SonicRSignal = {
   time: UTCTimestamp;
   price: number;
   side: 'buy' | 'sell';
+  debug?: {
+    close: number;
+    ema89: number;
+    leg1Price: number;
+    slope: number;
+    slopeStrength: number;
+    emaSeparation: number;
+    minSlopeStrength: number;
+    minEmaSeparation: number;
+  };
 };
 
 // Minimum normalized EMA34 slope strength (fraction of price).
@@ -117,6 +127,16 @@ export function computeSonicREntries(
           time,
           price: close,
           side: 'buy',
+          debug: {
+            close,
+            ema89,
+            leg1Price,
+            slope,
+            slopeStrength,
+            emaSeparation,
+            minSlopeStrength: MIN_SLOPE_STRENGTH,
+            minEmaSeparation: MIN_EMA_SEPARATION,
+          },
         });
         break;
       } else {
@@ -131,6 +151,16 @@ export function computeSonicREntries(
           time,
           price: close,
           side: 'sell',
+          debug: {
+            close,
+            ema89,
+            leg1Price,
+            slope,
+            slopeStrength,
+            emaSeparation,
+            minSlopeStrength: MIN_SLOPE_STRENGTH,
+            minEmaSeparation: MIN_EMA_SEPARATION,
+          },
         });
         break;
       }
