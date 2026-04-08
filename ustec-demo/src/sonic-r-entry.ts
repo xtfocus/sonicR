@@ -15,6 +15,10 @@ export type SonicRSignal = {
     emaSeparation: number;
     minSlopeStrength: number;
     minEmaSeparation: number;
+    triggerHigh: number;
+    triggerLow: number;
+    pendingEntryBuffer: number;
+    pendingEntryPrice: number;
   };
 };
 
@@ -25,6 +29,8 @@ const MIN_SLOPE_STRENGTH = 0.00015;
 // Minimum normalized distance between EMA34 and EMA89 to avoid chop.
 // Example: 0.0006 = 0.06% of price.
 const MIN_EMA_SEPARATION = 0.0006;
+const PENDING_ENTRY_BUFFER_RATIO = 0.0001;
+const MIN_PENDING_ENTRY_BUFFER = 1;
 
 function getRawAtIndex(arr: Array<number | undefined>, index: number): number | undefined {
   if (index < 0 || index >= arr.length) return undefined;
@@ -93,6 +99,8 @@ export function computeSonicREntries(
       if (!candle || candle.close == null) continue;
 
       const close = candle.close as number;
+      const high = candle.high as number;
+      const low = candle.low as number;
       const time = candle.time as UTCTimestamp;
 
       // Avoid duplicates: if a later wave already created a signal at this time, skip.
@@ -105,6 +113,7 @@ export function computeSonicREntries(
 
       const slope = emaClose34 - emaClose34Prev;
       const denom = Math.max(Math.abs(close), 1e-9);
+      const pendingEntryBuffer = Math.max(close * PENDING_ENTRY_BUFFER_RATIO, MIN_PENDING_ENTRY_BUFFER);
       const slopeStrength = Math.abs(slope) / denom;
       const slopeUp = slope > 0;
       const slopeDown = slope < 0;
@@ -136,6 +145,10 @@ export function computeSonicREntries(
             emaSeparation,
             minSlopeStrength: MIN_SLOPE_STRENGTH,
             minEmaSeparation: MIN_EMA_SEPARATION,
+            triggerHigh: high,
+            triggerLow: low,
+            pendingEntryBuffer,
+            pendingEntryPrice: high + pendingEntryBuffer,
           },
         });
         break;
@@ -160,6 +173,10 @@ export function computeSonicREntries(
             emaSeparation,
             minSlopeStrength: MIN_SLOPE_STRENGTH,
             minEmaSeparation: MIN_EMA_SEPARATION,
+            triggerHigh: high,
+            triggerLow: low,
+            pendingEntryBuffer,
+            pendingEntryPrice: low - pendingEntryBuffer,
           },
         });
         break;

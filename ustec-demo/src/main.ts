@@ -1,9 +1,15 @@
 import { createChart, CandlestickSeries, ColorType } from 'lightweight-charts';
 import type { CandlestickData, UTCTimestamp } from 'lightweight-charts';
 import {
+  createAsiaSessionBoxesPrimitiveFromData,
+  createLondonSessionBoxesPrimitiveFromData,
   createNYSessionBoxesPrimitiveFromData,
-  NYSessionBoxesPrimitive,
+  SessionBoxesPrimitive,
 } from './session-boxes-primitive';
+import {
+  createNYMacroBoxesPrimitiveFromData,
+  NYMacroBoxesPrimitive,
+} from './ny-macro-boxes-primitive';
 import { computeSonicRFromCandles } from './sonic-r-ema';
 import type { SonicRComputed } from './sonic-r-ema';
 import { indicatorDefinitions } from './indicators/registry';
@@ -11,6 +17,7 @@ import { IndicatorManager } from './indicators/indicator-manager';
 import { SonicRIndicator } from './indicators/sonicR-indicator';
 import { computeSonicRWavePatterns, type WavePattern } from './sonic-r-wave';
 import { computeSonicREntries, type SonicRSignal } from './sonic-r-entry';
+import type { OhlcvBar } from './sonic-r-order-blocks';
 
 // ============================================
 // 1. CREATE THE CHART (from getting-started ideas)
@@ -24,6 +31,7 @@ const chart = createChart(chartContainer, {
   layout: {
     background: { type: ColorType.Solid, color: '#131722' },
     textColor: '#d1d4dc',
+    fontSize: 22,
   },
   grid: {
     vertLines: { color: '#1f2943' },
@@ -38,6 +46,12 @@ const chart = createChart(chartContainer, {
     timeVisible: true,
     secondsVisible: false,
     rightOffset: 10,
+  },
+  handleScroll: {
+    mouseWheel: true,
+    pressedMouseMove: false,
+    horzTouchDrag: true,
+    vertTouchDrag: true,
   },
 });
 
@@ -68,7 +82,7 @@ function parseDateToUtcSeconds(dateStr: string, timeStr: string): number {
   return Math.floor(ms / 1000) as UTCTimestamp;
 }
 
-async function loadUstecCsv(): Promise<CandlestickData[]> {
+async function loadUstecCsv(): Promise<OhlcvBar[]> {
   const url = '/data/USTEC_M1_202508010000_202603031408.csv';
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Failed to load CSV: ${response.statusText}`);
@@ -76,31 +90,33 @@ async function loadUstecCsv(): Promise<CandlestickData[]> {
   const lines = text.trim().split('\n');
   if (lines.length < 2) return [];
 
-  const rows: CandlestickData[] = [];
+  const rows: OhlcvBar[] = [];
   for (let i = 1; i < lines.length; i++) {
     const cols = lines[i].split('\t');
     if (cols.length < 6) continue;
     const [date, time, open, high, low, close] = cols;
+    const tickVol = cols[6] != null && cols[6] !== '' ? parseFloat(cols[6]) : 0;
     rows.push({
       time: parseDateToUtcSeconds(date, time) as UTCTimestamp,
       open: parseFloat(open),
       high: parseFloat(high),
       low: parseFloat(low),
       close: parseFloat(close),
+      volume: Number.isFinite(tickVol) ? tickVol : 0,
     });
   }
   return rows;
 }
 
 function resampleOhlcSkipEmptyBuckets(
-  data1m: CandlestickData[],
+  data1m: OhlcvBar[],
   intervalSeconds: number
-): CandlestickData[] {
+): OhlcvBar[] {
   // lightweight-charts expects `time` to be increasing. We keep only buckets that
   // have at least one underlying 1m candle (skip empty buckets).
   if (intervalSeconds <= 60) return data1m;
 
-  const buckets = new Map<number, CandlestickData[]>();
+  const buckets = new Map<number, OhlcvBar[]>();
 
   for (const c of data1m) {
     const t = c.time as number;
@@ -111,7 +127,7 @@ function resampleOhlcSkipEmptyBuckets(
   }
 
   const bucketStarts = Array.from(buckets.keys()).sort((a, b) => a - b);
-  const result: CandlestickData[] = [];
+  const result: OhlcvBar[] = [];
 
   for (const bucketStart of bucketStarts) {
     const arr = buckets.get(bucketStart)!;
@@ -120,10 +136,12 @@ function resampleOhlcSkipEmptyBuckets(
     const close = arr[arr.length - 1].close!;
     let high = -Infinity;
     let low = Infinity;
+    let volume = 0;
 
     for (const x of arr) {
       high = Math.max(high, x.high!);
       low = Math.min(low, x.low!);
+      volume += x.volume ?? 0;
     }
 
     result.push({
@@ -132,6 +150,7 @@ function resampleOhlcSkipEmptyBuckets(
       high,
       low,
       close,
+      volume,
     });
   }
 
@@ -180,7 +199,7 @@ async function main() {
 
   // Cache resampled candles so switching timeframes is instant.
   const timeframesSeconds = [60, 300, 900, 1800, 3600, 86400];
-  const resampledByInterval = new Map<number, CandlestickData[]>();
+  const resampledByInterval = new Map<number, OhlcvBar[]>();
   for (const seconds of timeframesSeconds) {
     resampledByInterval.set(
       seconds,
@@ -222,13 +241,21 @@ async function main() {
   );
   const indicatorManager = new IndicatorManager([sonicRIndicator]);
 
-  let nyBoxesPrimitive: NYSessionBoxesPrimitive | null = null;
+  let asiaBoxesPrimitive: SessionBoxesPrimitive | null = null;
+  let londonBoxesPrimitive: SessionBoxesPrimitive | null = null;
+  let nyBoxesPrimitive: SessionBoxesPrimitive | null = null;
+  let nyMacroBoxesPrimitive: NYMacroBoxesPrimitive | null = null;
+  let showNyMacroBoxes = false;
   let currentIntervalSeconds = Number(timeframeSelect.value);
   let isReplayMode = false;
   let replayCursorIndex = 0;
   let replaySpeed = Number(replaySpeedInput.value) || 5;
   let replayTimer: number | null = null;
+  let isSpacePanActive = false;
+  let isSpacePanDragging = false;
+  const REPLAY_WINDOW_BARS = 1200;
   let lastReplayRenderedInterval: number | null = null;
+  let lastReplayRenderedStartIndex = 0;
   let lastReplayRenderedVisibleCount = 0;
 
   function getReplayCurrentTime(): UTCTimestamp {
@@ -263,7 +290,7 @@ async function main() {
   function formatJumpDateTime(sec: number): string {
     const d = new Date(sec * 1000);
     const pad = (n: number) => String(n).padStart(2, '0');
-    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
   }
 
   function parseJumpDateTime(value: string): number | null {
@@ -288,13 +315,13 @@ async function main() {
       return null;
     }
 
-    const dt = new Date(year, month - 1, day, hour, minute, 0, 0);
+    const dt = new Date(Date.UTC(year, month - 1, day, hour, minute, 0, 0));
     if (
-      dt.getFullYear() !== year ||
-      dt.getMonth() !== month - 1 ||
-      dt.getDate() !== day ||
-      dt.getHours() !== hour ||
-      dt.getMinutes() !== minute
+      dt.getUTCFullYear() !== year ||
+      dt.getUTCMonth() !== month - 1 ||
+      dt.getUTCDate() !== day ||
+      dt.getUTCHours() !== hour ||
+      dt.getUTCMinutes() !== minute
     ) {
       return null;
     }
@@ -321,13 +348,39 @@ async function main() {
     replayCursorIndex = Math.max(0, Math.min(maxIndex, nextIndex));
   }
 
-  function rebuildNyBoxes(visibleCandles: CandlestickData[]) {
+  function rebuildSessionBoxes(visibleCandles: CandlestickData[]) {
     const pane = chart.panes()[0];
+    const ohlc = visibleCandles as { time: number; low: number; high: number }[];
+    if (asiaBoxesPrimitive) pane.detachPrimitive(asiaBoxesPrimitive);
+    if (londonBoxesPrimitive) pane.detachPrimitive(londonBoxesPrimitive);
     if (nyBoxesPrimitive) pane.detachPrimitive(nyBoxesPrimitive);
-    nyBoxesPrimitive = createNYSessionBoxesPrimitiveFromData(
+    asiaBoxesPrimitive = createAsiaSessionBoxesPrimitiveFromData(ohlc);
+    londonBoxesPrimitive = createLondonSessionBoxesPrimitiveFromData(ohlc);
+    nyBoxesPrimitive = createNYSessionBoxesPrimitiveFromData(ohlc);
+    pane.attachPrimitive(asiaBoxesPrimitive);
+    pane.attachPrimitive(londonBoxesPrimitive);
+    pane.attachPrimitive(nyBoxesPrimitive);
+  }
+
+  function rebuildNyMacroBoxes(visibleCandles: CandlestickData[]) {
+    const pane = chart.panes()[0];
+    if (nyMacroBoxesPrimitive) {
+      pane.detachPrimitive(nyMacroBoxesPrimitive);
+      nyMacroBoxesPrimitive = null;
+    }
+    if (!showNyMacroBoxes) return;
+    nyMacroBoxesPrimitive = createNYMacroBoxesPrimitiveFromData(
       visibleCandles as { time: number; low: number; high: number }[]
     );
-    pane.attachPrimitive(nyBoxesPrimitive);
+    pane.attachPrimitive(nyMacroBoxesPrimitive);
+  }
+
+  function getReplayWindow(candles: CandlestickData[], replayCurrentTime: UTCTimestamp) {
+    const visibleCount = findVisibleCount(candles, replayCurrentTime);
+    const startIndex = Math.max(0, visibleCount - REPLAY_WINDOW_BARS);
+    const visibleCandles = candles.slice(startIndex, visibleCount);
+    const windowStartTime = visibleCandles.length > 0 ? (visibleCandles[0]!.time as UTCTimestamp) : null;
+    return { visibleCount, startIndex, visibleCandles, windowStartTime };
   }
 
   function renderCurrentFrame(intervalSeconds: number, fitContent = false, force = false) {
@@ -335,13 +388,16 @@ async function main() {
     if (!resampled) return;
 
     const replayCurrentTime = getReplayCurrentTime();
-    const visibleCount = findVisibleCount(resampled, replayCurrentTime);
-    const visibleCandles = resampled.slice(0, visibleCount);
+    const { visibleCount, startIndex, visibleCandles, windowStartTime } = getReplayWindow(
+      resampled,
+      replayCurrentTime
+    );
 
     const sameInterval = lastReplayRenderedInterval === intervalSeconds;
     const forwardIncremental =
       sameInterval &&
       !force &&
+      startIndex === lastReplayRenderedStartIndex &&
       visibleCount >= lastReplayRenderedVisibleCount &&
       visibleCount - lastReplayRenderedVisibleCount <= 16;
 
@@ -361,10 +417,12 @@ async function main() {
     }
     currentIntervalSeconds = intervalSeconds;
     lastReplayRenderedInterval = intervalSeconds;
+    lastReplayRenderedStartIndex = startIndex;
     lastReplayRenderedVisibleCount = visibleCount;
 
-    rebuildNyBoxes(visibleCandles);
-    indicatorManager.onReplayFrame(intervalSeconds, replayCurrentTime);
+    rebuildSessionBoxes(visibleCandles);
+    rebuildNyMacroBoxes(visibleCandles);
+    indicatorManager.onReplayFrame(intervalSeconds, replayCurrentTime, windowStartTime);
 
     if (fitContent) {
       requestAnimationFrame(() => chart.timeScale().fitContent());
@@ -378,7 +436,8 @@ async function main() {
     candleSeries.setData(resampled);
     currentIntervalSeconds = intervalSeconds;
 
-    rebuildNyBoxes(resampled);
+    rebuildSessionBoxes(resampled);
+    rebuildNyMacroBoxes(resampled);
 
     indicatorManager.onTimeframeChanged(intervalSeconds);
     if (fitContent) {
@@ -471,12 +530,36 @@ async function main() {
     replayControls.style.opacity = enabled ? '1' : '0.6';
   }
 
+  function applySpacePanCursor() {
+    chartContainer!.style.cursor = isSpacePanActive
+      ? isSpacePanDragging
+        ? 'grabbing'
+        : 'grab'
+      : '';
+  }
+
+  function setSpacePanActive(active: boolean) {
+    if (isSpacePanActive === active) return;
+    isSpacePanActive = active;
+    if (!active) isSpacePanDragging = false;
+    chart.applyOptions({
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: active,
+        horzTouchDrag: true,
+        vertTouchDrag: true,
+      },
+    });
+    applySpacePanCursor();
+  }
+
   function enterReplayMode() {
     isReplayMode = true;
     replayModeToggleButton.textContent = 'Exit Replay';
     setReplayControlsEnabled(true);
     updateReplaySliderFromTime();
     lastReplayRenderedInterval = null;
+    lastReplayRenderedStartIndex = 0;
     lastReplayRenderedVisibleCount = 0;
     renderCurrentFrame(currentIntervalSeconds, true, true);
   }
@@ -487,6 +570,7 @@ async function main() {
     replayModeToggleButton.textContent = 'Enter Replay';
     setReplayControlsEnabled(false);
     lastReplayRenderedInterval = null;
+    lastReplayRenderedStartIndex = 0;
     lastReplayRenderedVisibleCount = 0;
     renderFullFrame(currentIntervalSeconds, true);
   }
@@ -550,9 +634,51 @@ async function main() {
       waveLabel.appendChild(waveCheckbox);
       waveLabel.appendChild(document.createTextNode('Show waves/legs'));
       waveWrap.appendChild(waveLabel);
+
+      const obWrap = document.createElement('div');
+      obWrap.style.margin = '4px 0 0 0';
+      const obLabel = document.createElement('label');
+      obLabel.style.display = 'inline-flex';
+      obLabel.style.alignItems = 'center';
+      obLabel.style.cursor = 'pointer';
+      obLabel.style.opacity = '0.9';
+
+      const obCheckbox = document.createElement('input');
+      obCheckbox.type = 'checkbox';
+      obCheckbox.id = 'toggle-sonicR-order-blocks';
+      obCheckbox.checked = false;
+      obCheckbox.style.marginRight = '8px';
+      obCheckbox.addEventListener('change', () => {
+        sonicRIndicator.setShowOrderBlocks(obCheckbox.checked);
+      });
+
+      obLabel.appendChild(obCheckbox);
+      obLabel.appendChild(document.createTextNode('Order blocks (LuxAlgo OB)'));
+      obWrap.appendChild(obLabel);
+      waveWrap.appendChild(obWrap);
       indicatorsMenu.appendChild(waveWrap);
     }
   }
+
+  const macroWrap = document.createElement('div');
+  macroWrap.style.margin = '8px 0 0 0';
+  const macroLabel = document.createElement('label');
+  macroLabel.style.display = 'inline-flex';
+  macroLabel.style.alignItems = 'center';
+  macroLabel.style.cursor = 'pointer';
+  const macroCheckbox = document.createElement('input');
+  macroCheckbox.type = 'checkbox';
+  macroCheckbox.id = 'toggle-ny-macro-boxes';
+  macroCheckbox.checked = showNyMacroBoxes;
+  macroCheckbox.style.marginRight = '8px';
+  macroCheckbox.addEventListener('change', () => {
+    showNyMacroBoxes = macroCheckbox.checked;
+    renderView(currentIntervalSeconds, false);
+  });
+  macroLabel.appendChild(macroCheckbox);
+  macroLabel.appendChild(document.createTextNode('NY Macro Times'));
+  macroWrap.appendChild(macroLabel);
+  indicatorsMenu.appendChild(macroWrap);
 
   // Apply default enabled/disabled state after menu build.
   for (const def of indicatorDefinitions) {
@@ -600,6 +726,37 @@ async function main() {
     stopReplay();
     updateReplaySliderFromTime();
     renderCurrentFrame(currentIntervalSeconds, false, true);
+  });
+
+  const isTypingTarget = (t: EventTarget | null): boolean => {
+    const el = t as HTMLElement | null;
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+  };
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space') return;
+    if (isTypingTarget(e.target)) return;
+    e.preventDefault();
+    setSpacePanActive(true);
+  });
+
+  window.addEventListener('keyup', (e) => {
+    if (e.code !== 'Space') return;
+    setSpacePanActive(false);
+  });
+
+  chartContainer!.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || !isSpacePanActive) return;
+    isSpacePanDragging = true;
+    applySpacePanCursor();
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (!isSpacePanDragging) return;
+    isSpacePanDragging = false;
+    applySpacePanCursor();
   });
 
   console.log(`Loaded ${data1m.length} 1m candles`);

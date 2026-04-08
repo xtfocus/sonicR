@@ -122,8 +122,9 @@ export function computeSonicRWavePatterns(
     const leg2End = pivots[idxLow2]!;
     const leg3End = pivots[idxHigh2]!;
 
-    // Impulse up + pullback + breakout
+    // Impulse up + higher-low pullback + breakout
     if (leg1End.price <= leg1Start.price) continue;
+    if (leg2End.price <= leg1Start.price) continue; // HL: pullback low must stay above leg1 start low
     if (leg2End.price >= leg1End.price) continue; // pullback should be below impulse high
     if (leg3End.price <= leg1End.price) continue; // breakout should exceed impulse high
 
@@ -156,8 +157,9 @@ export function computeSonicRWavePatterns(
     const leg2End = pivots[idxHigh2]!;
     const leg3End = pivots[idxLow3]!;
 
-    // Impulse down + pullback + breakout down
+    // Impulse down + lower-high pullback + breakout down
     if (leg1End.price >= leg1Start.price) continue;
+    if (leg2End.price >= leg1Start.price) continue; // LH: pullback high must stay below leg1 start high
     if (leg2End.price <= leg1End.price) continue; // pullback should be above impulse low
     if (leg3End.price >= leg1End.price) continue; // breakout should be below impulse low
 

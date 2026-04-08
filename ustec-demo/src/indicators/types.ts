@@ -6,6 +6,10 @@ export interface IndicatorController {
   id: IndicatorId;
   setEnabled(enabled: boolean): void;
   onTimeframe(intervalSeconds: number): void;
-  onReplayFrame(intervalSeconds: number, currentTime: UTCTimestamp | null): void;
+  onReplayFrame(
+    intervalSeconds: number,
+    currentTime: UTCTimestamp | null,
+    windowStartTime: UTCTimestamp | null
+  ): void;
 }
 

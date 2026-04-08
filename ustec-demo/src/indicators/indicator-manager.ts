@@ -20,9 +20,13 @@ export class IndicatorManager {
     }
   }
 
-  onReplayFrame(intervalSeconds: number, currentTime: UTCTimestamp | null) {
+  onReplayFrame(
+    intervalSeconds: number,
+    currentTime: UTCTimestamp | null,
+    windowStartTime: UTCTimestamp | null
+  ) {
     for (const c of this._controllers) {
-      c.onReplayFrame(intervalSeconds, currentTime);
+      c.onReplayFrame(intervalSeconds, currentTime, windowStartTime);
     }
   }
 }

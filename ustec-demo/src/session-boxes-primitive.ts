@@ -1,6 +1,13 @@
 /**
- * Pane primitive that draws boundary boxes for each New York session.
- * NY session in UTC: 14:00 → 22:00 (data is already in UTC).
+ * Pane primitive: session high/low boxes aligned with TradingView-style session windows:
+ * IANA timezone + local clock (DST-aware via Intl), not fixed UTC hours.
+ *
+ * Defaults match the built-in "Trading Sessions" indicator (Pine) session strings:
+ * - Tokyo:   Asia/Tokyo        09:00–15:00 local
+ * - London:  Europe/London     08:30–16:30 local
+ * - New York: America/New_York 09:30–16:00 local
+ *
+ * Colors follow ustec-demo UI (yellow / greenish / blue), not TV’s default palette.
  */
 
 import type {
@@ -17,46 +24,109 @@ import type {
   CanvasRenderingTarget2D,
 } from 'fancy-canvas';
 
-const NY_START_HOUR = 14;
-const NY_END_HOUR = 22;
-const BOX_STROKE = 'rgba(41, 98, 255, 0.85)';
-const BOX_FILL = 'rgba(41, 98, 255, 0.12)';
+/** Same defaults as TradingView script `input.session(...)` for each zone. */
+const TOKYO_TZ = 'Asia/Tokyo';
+const TOKYO_START_MIN = 9 * 60 + 0;
+const TOKYO_END_MIN = 15 * 60 + 0;
+
+const LONDON_TZ = 'Europe/London';
+const LONDON_START_MIN = 8 * 60 + 30;
+const LONDON_END_MIN = 16 * 60 + 30;
+
+const NY_TZ = 'America/New_York';
+const NY_START_MIN = 9 * 60 + 30;
+const NY_END_MIN = 16 * 60 + 0;
+
+const NY_BOX_STROKE = 'rgba(41, 98, 255, 0.85)';
+const NY_BOX_FILL = 'rgba(41, 98, 255, 0.12)';
+const ASIA_BOX_STROKE = 'rgba(234, 179, 8, 0.9)';
+const ASIA_BOX_FILL = 'rgba(234, 179, 8, 0.14)';
+const LONDON_BOX_STROKE = 'rgba(52, 211, 153, 0.9)';
+const LONDON_BOX_FILL = 'rgba(52, 211, 153, 0.14)';
+
 const BOX_LINE_WIDTH = 2;
 
-/** One session: start/end times and min/max price during the session. */
-export type SessionRange = {
-  start: UTCTimestamp;
-  end: UTCTimestamp;
-  low: number;
-  high: number;
-};
+const dateKeyFormatterCache = new Map<string, Intl.DateTimeFormat>();
+const minuteOfDayFormatterCache = new Map<string, Intl.DateTimeFormat>();
 
-const ONE_DAY = 24 * 60 * 60;
-const NY_START_OFFSET = NY_START_HOUR * 60 * 60;
-const NY_END_OFFSET = NY_END_HOUR * 60 * 60;
+function getLocalDateKey(utcSec: number, timeZone: string): string {
+  let fmt = dateKeyFormatterCache.get(timeZone);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    dateKeyFormatterCache.set(timeZone, fmt);
+  }
+  return fmt.format(new Date(utcSec * 1000));
+}
+
+/** Minute of day [0, 1440) in `timeZone` for this UTC instant. */
+function getMinuteOfDay(utcSec: number, timeZone: string): number {
+  let fmt = minuteOfDayFormatterCache.get(timeZone);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat('en-GB', {
+      timeZone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    });
+    minuteOfDayFormatterCache.set(timeZone, fmt);
+  }
+  const parts = fmt.formatToParts(new Date(utcSec * 1000));
+  let hour = 0;
+  let minute = 0;
+  for (const p of parts) {
+    if (p.type === 'hour') hour = parseInt(p.value, 10);
+    if (p.type === 'minute') minute = parseInt(p.value, 10);
+  }
+  return hour * 60 + minute;
+}
 
 /**
- * Build session ranges from actual candle data: times and min/max price per session.
- * For each calendar day, finds first bar >= 14:00 UTC, last bar <= 22:00 UTC,
- * and the min low / max high over that session.
+ * Half-open local window [startMinute, endMinute): same convention as typical
+ * Pine `input.session` end time (last bar inside is one minute before end).
  */
-export function buildSessionRangesFromData(
-  data: { time: number; low: number; high: number }[]
+function isInSession(
+  utcSec: number,
+  timeZone: string,
+  startMinute: number,
+  endMinute: number
+): boolean {
+  const mob = getMinuteOfDay(utcSec, timeZone);
+  return mob >= startMinute && mob < endMinute;
+}
+
+export type WallClockSessionSpec = {
+  timeZone: string;
+  startMinute: number;
+  endMinute: number;
+};
+
+/**
+ * Build one box per calendar session: local date in `timeZone` while inside the window,
+ * min/max price and first/last bar time from data (same idea as the TV script).
+ */
+export function buildSessionRangesFromWallClock(
+  data: { time: number; low: number; high: number }[],
+  spec: WallClockSessionSpec
 ): SessionRange[] {
   if (data.length === 0) return [];
-  const byDay = new Map<
-    number,
+  const { timeZone, startMinute, endMinute } = spec;
+  const bySessionDay = new Map<
+    string,
     { first: number; last: number; low: number; high: number }
   >();
+
   for (const point of data) {
     const t = point.time;
-    const dayStart = Math.floor(t / ONE_DAY) * ONE_DAY;
-    const sessionStart = dayStart + NY_START_OFFSET;
-    const sessionEnd = dayStart + NY_END_OFFSET;
-    if (t < sessionStart || t > sessionEnd) continue;
-    const cur = byDay.get(dayStart);
+    if (!isInSession(t, timeZone, startMinute, endMinute)) continue;
+    const dayKey = getLocalDateKey(t, timeZone);
+    const cur = bySessionDay.get(dayKey);
     if (!cur) {
-      byDay.set(dayStart, {
+      bySessionDay.set(dayKey, {
         first: t,
         last: t,
         low: point.low,
@@ -69,8 +139,9 @@ export function buildSessionRangesFromData(
       cur.high = Math.max(cur.high, point.high);
     }
   }
-  return Array.from(byDay.entries())
-    .sort(([a], [b]) => a - b)
+
+  return Array.from(bySessionDay.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
     .map(([, v]) => ({
       start: v.first as UTCTimestamp,
       end: v.last as UTCTimestamp,
@@ -78,6 +149,14 @@ export function buildSessionRangesFromData(
       high: v.high,
     }));
 }
+
+/** One session: start/end times and min/max price during the session. */
+export type SessionRange = {
+  start: UTCTimestamp;
+  end: UTCTimestamp;
+  low: number;
+  high: number;
+};
 
 interface BoxCoords {
   x1: number;
@@ -87,15 +166,19 @@ interface BoxCoords {
 }
 
 class SessionBoxesRenderer implements IPrimitivePaneRenderer {
-  constructor(private _boxes: BoxCoords[]) {}
+  constructor(
+    private _boxes: BoxCoords[],
+    private _stroke: string,
+    private _fill: string
+  ) {}
 
   private drawBoxes(target: CanvasRenderingTarget2D): void {
     if (this._boxes.length === 0) return;
     target.useBitmapCoordinateSpace(
       (scope: BitmapCoordinatesRenderingScope) => {
         const { context: ctx, horizontalPixelRatio: hPR, verticalPixelRatio: vPR } = scope;
-        ctx.strokeStyle = BOX_STROKE;
-        ctx.fillStyle = BOX_FILL;
+        ctx.strokeStyle = this._stroke;
+        ctx.fillStyle = this._fill;
         ctx.lineWidth = Math.max(1, Math.floor(BOX_LINE_WIDTH * hPR));
         for (const b of this._boxes) {
           const x1 = Math.round(b.x1 * hPR);
@@ -123,10 +206,11 @@ class SessionBoxesRenderer implements IPrimitivePaneRenderer {
 class SessionBoxesPaneView implements IPanePrimitivePaneView {
   constructor(
     private _chart: IChartApiBase<Time>,
-    private _sessions: SessionRange[]
+    private _sessions: SessionRange[],
+    private _stroke: string,
+    private _fill: string
   ) {}
 
-  // Use 'normal' so we're in paneViews(); 'bottom' is not returned by the pane primitive wrapper in this API
   zOrder(): 'normal' {
     return 'normal';
   }
@@ -153,15 +237,19 @@ class SessionBoxesPaneView implements IPanePrimitivePaneView {
         y2: yHigh,
       });
     }
-    return new SessionBoxesRenderer(boxes);
+    return new SessionBoxesRenderer(boxes, this._stroke, this._fill);
   }
 }
 
-export class NYSessionBoxesPrimitive implements IPanePrimitive<Time> {
+export class SessionBoxesPrimitive implements IPanePrimitive<Time> {
   private _chart: IChartApiBase<Time> | null = null;
   private _view: SessionBoxesPaneView | null = null;
 
-  constructor(private _sessions: SessionRange[]) {
+  constructor(
+    private _sessions: SessionRange[],
+    private _stroke: string,
+    private _fill: string
+  ) {
     this._view = null;
   }
 
@@ -172,7 +260,12 @@ export class NYSessionBoxesPrimitive implements IPanePrimitive<Time> {
 
   attached(param: PaneAttachedParameter<Time>): void {
     this._chart = param.chart;
-    this._view = new SessionBoxesPaneView(this._chart, this._sessions);
+    this._view = new SessionBoxesPaneView(
+      this._chart,
+      this._sessions,
+      this._stroke,
+      this._fill
+    );
     param.requestUpdate();
   }
 
@@ -182,12 +275,39 @@ export class NYSessionBoxesPrimitive implements IPanePrimitive<Time> {
   }
 }
 
-/**
- * Create NY session boxes using session times and min/max price from the actual candle data.
- */
+/** @deprecated Use SessionBoxesPrimitive — kept for existing imports. */
+export type NYSessionBoxesPrimitive = SessionBoxesPrimitive;
+
+/** Tokyo session (TV "First session" default); ustec-demo colors it yellow as "Asia". */
+export function createAsiaSessionBoxesPrimitiveFromData(
+  data: { time: number; low: number; high: number }[]
+): SessionBoxesPrimitive {
+  const sessions = buildSessionRangesFromWallClock(data, {
+    timeZone: TOKYO_TZ,
+    startMinute: TOKYO_START_MIN,
+    endMinute: TOKYO_END_MIN,
+  });
+  return new SessionBoxesPrimitive(sessions, ASIA_BOX_STROKE, ASIA_BOX_FILL);
+}
+
+export function createLondonSessionBoxesPrimitiveFromData(
+  data: { time: number; low: number; high: number }[]
+): SessionBoxesPrimitive {
+  const sessions = buildSessionRangesFromWallClock(data, {
+    timeZone: LONDON_TZ,
+    startMinute: LONDON_START_MIN,
+    endMinute: LONDON_END_MIN,
+  });
+  return new SessionBoxesPrimitive(sessions, LONDON_BOX_STROKE, LONDON_BOX_FILL);
+}
+
 export function createNYSessionBoxesPrimitiveFromData(
   data: { time: number; low: number; high: number }[]
-): NYSessionBoxesPrimitive {
-  const sessions = buildSessionRangesFromData(data);
-  return new NYSessionBoxesPrimitive(sessions);
+): SessionBoxesPrimitive {
+  const sessions = buildSessionRangesFromWallClock(data, {
+    timeZone: NY_TZ,
+    startMinute: NY_START_MIN,
+    endMinute: NY_END_MIN,
+  });
+  return new SessionBoxesPrimitive(sessions, NY_BOX_STROKE, NY_BOX_FILL);
 }
