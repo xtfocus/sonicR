@@ -18,7 +18,7 @@ import { SonicRIndicator } from './indicators/sonicR-indicator';
 import { computeSonicRWavePatterns, type WavePattern } from './sonic-r-wave';
 import { computeSonicREntries, type SonicRSignal } from './sonic-r-entry';
 import type { OhlcvBar } from './sonic-r-order-blocks';
-
+import { SelectionTool } from './selection-tool';
 // ============================================
 // 1. CREATE THE CHART (from getting-started ideas)
 // ============================================
@@ -258,6 +258,27 @@ async function main() {
   let lastReplayRenderedStartIndex = 0;
   let lastReplayRenderedVisibleCount = 0;
 
+  // Effective dataset for the data selector tool: all bars of the active
+  // timeframe, truncated at the replay cursor when replaying (WYSIWYG).
+  function effectiveDataset(): OhlcvBar[] {
+    const all = resampledByInterval.get(currentIntervalSeconds);
+    if (!all || all.length === 0) return [];
+    if (!isReplayMode) return all;
+    return all.slice(0, findVisibleCount(all, getReplayCurrentTime()));
+  }
+
+  const selectionTool = new SelectionTool({
+    chart,
+    series: candleSeries,
+    container: chartContainer!,
+    symbol: 'USTEC',
+    getDataset: effectiveDataset,
+    getTimeframeLabel: () =>
+      timeframeSelect.options[timeframeSelect.selectedIndex]?.textContent ?? '',
+    isInterceptBlocked: () => isSpacePanActive,
+    onStateChange: () => applySpacePanCursor(),
+  });
+
   function getReplayCurrentTime(): UTCTimestamp {
     return data1m[replayCursorIndex]!.time as UTCTimestamp;
   }
@@ -423,6 +444,7 @@ async function main() {
     rebuildSessionBoxes(visibleCandles);
     rebuildNyMacroBoxes(visibleCandles);
     indicatorManager.onReplayFrame(intervalSeconds, replayCurrentTime, windowStartTime);
+    selectionTool.refresh();
 
     if (fitContent) {
       requestAnimationFrame(() => chart.timeScale().fitContent());
@@ -440,6 +462,7 @@ async function main() {
     rebuildNyMacroBoxes(resampled);
 
     indicatorManager.onTimeframeChanged(intervalSeconds);
+    selectionTool.refresh();
     if (fitContent) {
       requestAnimationFrame(() => chart.timeScale().fitContent());
     }
@@ -535,7 +558,9 @@ async function main() {
       ? isSpacePanDragging
         ? 'grabbing'
         : 'grab'
-      : '';
+      : selectionTool.isActive()
+        ? 'crosshair'
+        : '';
   }
 
   function setSpacePanActive(active: boolean) {
@@ -728,6 +753,18 @@ async function main() {
     renderCurrentFrame(currentIntervalSeconds, false, true);
   });
 
+  const selectRangeToggleBtn = document.getElementById(
+    'select-range-toggle'
+  ) as HTMLButtonElement | null;
+  if (!selectRangeToggleBtn) throw new Error('Missing #select-range-toggle button');
+  selectRangeToggleBtn.addEventListener('click', () => {
+    const active = !selectionTool.isActive();
+    selectionTool.setEnabled(active);
+    selectRangeToggleBtn.textContent = active ? 'Selecting...' : 'Select Range';
+    selectRangeToggleBtn.style.background = active ? '#1f2b47' : '#0f1520';
+    selectRangeToggleBtn.style.borderColor = active ? '#4c6ef5' : '#2a3551';
+  });
+
   const isTypingTarget = (t: EventTarget | null): boolean => {
     const el = t as HTMLElement | null;
     if (!el) return false;
@@ -736,6 +773,10 @@ async function main() {
   };
 
   window.addEventListener('keydown', (e) => {
+    if (e.code === 'Escape') {
+      if (!isTypingTarget(e.target)) selectionTool.handleEscape();
+      return;
+    }
     if (e.code !== 'Space') return;
     if (isTypingTarget(e.target)) return;
     e.preventDefault();
