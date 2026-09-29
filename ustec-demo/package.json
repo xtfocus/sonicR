@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "serve-api": "tsx src/node/serve.ts",
     "analyze": "tsx src/node/analyze-cli.ts",
+    "chart": "tsx src/node/chart-cli.ts",
     "query": "tsx src/node/cli.ts"
   },
   "devDependencies": {
