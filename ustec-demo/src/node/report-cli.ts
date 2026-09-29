@@ -87,8 +87,13 @@ while (cursor != null && cursor <= endSec) {
   const label = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
   const bars = api.queryRange(cursor, windowEnd, { timeframe }).bars;
   if (bars.length > 0) windows.push({ label, bars });
+  // Stop once the window we just processed reached (or passed) the
+  // requested end. NOTE: must compare `nextMonth`, not `cursor ===
+  // windowEnd` — the naive check fires on the FIRST iteration whenever
+  // endSec sits exactly on a month boundary (cursor === windowEnd),
+  // truncating the scan to one window.
   cursor = nextMonth;
-  if (cursor === windowEnd) break; // last partial month, avoid infinite loop
+  if (nextMonth >= endSec) break;
 }
 const regime = marketBias(htfAll.bars, 5);
 console.log(`Regime: ${regime.structure} → ${regime.bias} (${windows.length} monthly window(s))`);
@@ -145,6 +150,10 @@ const summary = {
   ltfTimeframe,
   regime: { structure: regime.structure, bias: regime.bias, pivotCount: regime.pivotCount },
   monthlyWindows: windows.map((w) => w.label),
+  // The requested end ran past the data (e.g. data ends 2026-03-03):
+  // monthly windows after that are sparse; quote this when interpreting
+  // the bias timeline.
+  rangeClippedToDataEnd: htfAll.clippedFromEnd,
   charts: chartRecords.map((r) => ({ id: r.id, fn: r.provenance.fn, caption: r.caption })),
   timeline: timelineRecord.caption,
   reportFile: 'report/index.html',

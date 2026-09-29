@@ -87,6 +87,11 @@ skill).
 ## Checklist of gotchas
 
 - **Data is historical** — range anchors at `available.end`, not now.
+- **Clipping is explicit after the fix**: `/api/range` responses carry
+  `clippedFromEnd: true` when the requested end ran past the data, and
+  `npm run report` puts `rangeClippedToDataEnd` in `summary.json`.
+  A clipped window is sparse data, NOT "the market did nothing" — say so
+  in the narrative when adjacent months look empty.
 - **RANGE is an answer, not a failure.** `stand_aside` with no signals is
   the system working; say so plainly.
 - **`--minRR` gates everything** — see it before declaring "no setups".

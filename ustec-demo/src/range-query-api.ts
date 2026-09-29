@@ -44,6 +44,12 @@ export interface RangeQueryResult {
   bars: OhlcvBar[];
   /** Full extent of the queried (effective) dataset, UTC seconds; null when empty. */
   available: { start: number; end: number } | null;
+  /**
+   * True when the requested end ran past `available.end` — the returned
+   * bars are clipped at the data's last bar. Prevents a sparse/empty
+   * window from looking like "the market did nothing".
+   */
+  clippedFromEnd: boolean;
 }
 
 export interface RangeQueryOptions {
@@ -156,6 +162,13 @@ export function createRangeQueryApi(deps: RangeQueryDeps): RangeQueryApi {
     const bars = limit == null ? matched : matched.slice(0, limit);
     const first = bars[0];
     const last = bars[bars.length - 1];
+    const available =
+      dataset.length > 0
+        ? {
+            start: dataset[0]!.time as number,
+            end: dataset[dataset.length - 1]!.time as number,
+          }
+        : null;
     return {
       symbol: deps.symbol,
       timeframe: tf.label,
@@ -165,13 +178,12 @@ export function createRangeQueryApi(deps: RangeQueryDeps): RangeQueryApi {
       to: last ? formatBarTime(last.time as number) : null,
       barCount: bars.length,
       bars,
-      available:
-        dataset.length > 0
-          ? {
-              start: dataset[0]!.time as number,
-              end: dataset[dataset.length - 1]!.time as number,
-            }
-          : null,
+      available,
+      // Truth the caller would otherwise have to infer: the requested end
+      // ran past the data, so the returned bars are clipped at
+      // available.end. Sparse/empty windows stay explicit instead of
+      // looking like "the market did nothing".
+      clippedFromEnd: available != null && Math.max(startSec, endSec) > available.end,
     };
   }
 
