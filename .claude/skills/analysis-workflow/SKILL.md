@@ -75,14 +75,18 @@ skill).
 
 ## Step 4 — Assemble the report (the LLM contract)
 
+`npm run report` already fills `report/index.html`: all figures inline
+(with captions + sha256 footnotes) and a facts digest in `#report-summary`.
+Your job is the **polish**:
+
 1. Read `cases/<name>/report/summary.json` → regime verdict, chart list.
-2. Read each sidecar (`charts/<id>.json`) → `caption`, `analysisDigest`.
-3. Fill `report/index.html`: `#report-summary` narrative + one `<figure>`
-   per chart (`<img src="../charts/<id>.png">` — paths are relative to
-   the report dir) with the sidecar's caption.
-4. **Quote sidecars verbatim** for numbers; narrative words are yours.
-   A figure's caption must match its sidecar — never re-derive from
-   pixels.
+2. Read each sidecar (`charts/<id>.json`) → `caption`, `analysisDigest` —
+   quote numbers verbatim when you rewrite `#report-summary`.
+3. Edit the digest into a clean narrative; leave the `<figure>` blocks
+   as generated (they are the ground truth).
+
+**Quote sidecars verbatim for numbers; narrative words are yours.**
+A figure's caption must match its sidecar — never re-derive from pixels.
 
 ## Checklist of gotchas
 

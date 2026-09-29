@@ -28,9 +28,25 @@ import { sourceCsvSha256 } from './dataset';
 import { marketBias } from '../analysis/signal';
 import { biasTimeline } from '../viz/coverage';
 import { renderPng } from '../viz/png';
-import { saveChart } from './artifacts';
+import { saveChart, type ArtifactRecord } from './artifacts';
 
 const TEMPLATE_PATH = fileURLToPath(new URL('../../report-template.html', import.meta.url));
+
+/** Escape HTML in captions/digest inserted into the report page. */
+function esc(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Number of qualifying signals in a chart sidecar's digest (0 when absent). */
+function countSignals(record: ArtifactRecord | undefined): number {
+  const digest = record?.analysisDigest as { signals?: unknown } | undefined;
+  const signals = digest?.signals;
+  return Array.isArray(signals) ? signals.length : 0;
+}
 
 const USAGE = `Usage: npm run report -- --start <time> --end <time> [options]
 
@@ -137,11 +153,45 @@ const timelineRecord = saveChart({
 });
 console.log(`  ✓ bias-timeline → ${timelineRecord.file}`);
 
-// 4. Template + facts for the LLM narrative step.
+// 4. Report page: template + auto-filled figures + a facts digest, so the
+//    case is presentable the moment `npm run report` finishes. The digest
+//    paragraph deliberately carries NO data-i18n (i18n init would overwrite
+//    it with the placeholder); the LLM narrative step polishes it further.
 const dir = caseDirPath(caseId);
 mkdirSync(join(dir, 'report'), { recursive: true });
-writeFileSync(join(dir, 'report', 'index.html'), readFileSync(TEMPLATE_PATH, 'utf8'));
 setCaseSourceHash(caseId, sourceCsvSha256(args.get('csv')));
+
+const figures = [...chartRecords, timelineRecord]
+  .map(
+    (r) => `      <figure>
+        <img src="../charts/${r.id}.png" alt="${esc(r.altText)}" />
+        <figcaption>
+          ${esc(r.caption)}
+          <div class="caption-note">artifact: ${esc(r.id)} · sha256 ${r.sha256.slice(0, 12)}… · fn=${esc(r.provenance.fn)}</div>
+        </figcaption>
+      </figure>`
+  )
+  .join('\n');
+
+const signalRecord = chartRecords.find((r) => r.provenance.fn === 'signal');
+const qualifiedSignals = countSignals(signalRecord);
+const digest = `USTEC ${timeframe} ${start} → ${end} — regime ${regime.structure} (${regime.bias}) · ${windows.length} monthly window(s) (${windows.map((w) => w.label).join(', ')}) · ${chartRecords.length + 1} charts · ${qualifiedSignals} qualifying signal(s) at minRR ${minRR ?? 2}. ${htfAll.clippedFromEnd ? 'The requested end ran past the feed: the last month(s) are sparse clipped data, not a quiet market.' : ''} Edit this summary and add the narrative.`;
+
+let reportHtml = readFileSync(TEMPLATE_PATH, 'utf8');
+// Drop the LLM guidance comment, then swap placeholder paragraph → digest
+// (no data-i18n, so i18n init won't clobber it).
+reportHtml = reportHtml.split('      <!-- LLM: ')[0] + reportHtml.slice(reportHtml.indexOf('-->', reportHtml.indexOf('<!-- LLM:')) + 3);
+reportHtml = reportHtml.replace(
+  /<p id="report-summary"[^>]*>[\s\S]*?<\/p>/,
+  `<p id="report-summary">${esc(digest)}</p>`
+);
+// Replace the figure-template comment block with the real figures.
+const figStart = reportHtml.indexOf('<!-- Figure template');
+if (figStart >= 0) {
+  const figEnd = reportHtml.indexOf('-->', figStart) + 3;
+  reportHtml = reportHtml.slice(0, figStart) + figures + '\n' + reportHtml.slice(figEnd);
+}
+writeFileSync(join(dir, 'report', 'index.html'), reportHtml);
 
 const summary = {
   caseId,
@@ -175,4 +225,4 @@ console.log(JSON.stringify(
   null,
   2
 ));
-console.log(`\nNext: read report/summary.json + the sidecars, then fill report/index.html.`);
+console.log(`\nReport: cases/${caseId}/report/index.html — figures auto-filled; polish the #report-summary narrative via the sidecars.`);
