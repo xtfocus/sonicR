@@ -1,39 +1,58 @@
 /**
- * Chart artifacts: PNG + sidecar manifest persistence under `reports/`.
+ * Case artifacts — self-contained analysis folders under `cases/`.
  *
- * Conventions (the LLM contract for report assembly):
+ * A **case** is one investigation (e.g. "aug-2025-long"): every input
+ * and output needed to reproduce or reference it lives in one folder.
  *
  * ```
- * reports/<session>/
- *   manifest.json          # session index
- *   <id>.png               # the rendered chart
- *   <id>.json              # sidecar: caption, provenance, digest, sha256
+ * cases/<case-id>/
+ *   case.json            # the case manifest (below)
+ *   data/                # pinned data snippets: exact bars each analysis ran on
+ *     bars_1H.csv
+ *     bars_5m.csv
+ *   analysis/            # raw function outputs, one JSON per fn
+ *     signal_1H_5m.json
+ *   charts/              # rendered PNGs + sidecars
+ *     signal_1H_5m_01.png
+ *     signal_1H_5m_01.json
+ *   report/
+ *     index.html         # LLM-assembled report (optional)
  * ```
  *
- * The sidecar is the ground truth for captions — anything assembling an
- * HTML report reads `caption`/`analysisDigest` from it and never
- * re-derives numbers from pixels. `sha256` ties the PNG to its metadata
- * so references stay honest.
+ * The case manifest is the LLM's single entry point for report assembly:
+ *
+ * ```json
+ * {
+ *   "caseId": "aug-2025-long",
+ *   "symbol": "USTEC",
+ *   "range": { "start": 1754092800, "end": 1756684800 },
+ *   "sourceCsvSha256": "…",           // reproducibility anchor
+ *   "bars":  [ { "timeframe": "1H", "file": "data/bars_1H.csv", "from": …, "to": …, "rows": … } ],
+ *   "charts": [ ArtifactRecord… ],    // one per PNG+sidecar pair
+ *   "analysis": [ { "fn": "signal", "file": "analysis/signal_1H_5m.json" } ]
+ * }
+ * ```
  */
 
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import type { OhlcvBar } from '../analysis/types';
 import type { ChartSpec } from '../viz/types';
 import type { RenderedPng } from '../viz/png';
 
-const REPORTS_ROOT = fileURLToPath(new URL('../../reports/', import.meta.url));
+export const CASES_ROOT = fileURLToPath(new URL('../../cases/', import.meta.url));
 
-/** A session name is a directory name: keep it filesystem-safe. */
-function sanitizeSession(session: string): string {
-  const clean = session.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+/** A case id is a directory name: keep it filesystem-safe. */
+export function sanitizeCase(caseId: string): string {
+  const clean = caseId.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
   return clean === '' ? 'default' : clean.slice(0, 64);
 }
 
 export type ArtifactRecord = {
   id: string;
-  session: string;
+  caseId: string;
   file: string;
   sidecar: string;
   format: 'png';
@@ -54,15 +73,34 @@ export type ArtifactRecord = {
   generatedAt: string;
 };
 
-export type SessionManifest = {
-  session: string;
+export type CaseBarsFile = {
+  timeframe: string;
+  file: string;
+  from: number;
+  to: number;
+  rows: number;
+};
+
+export type CaseAnalysisFile = {
+  fn: string;
+  file: string;
+};
+
+export type CaseManifest = {
+  caseId: string;
+  symbol?: string;
+  title?: string;
+  range?: { start?: number; to?: number };
+  sourceCsvSha256?: string;
+  bars: CaseBarsFile[];
+  charts: ArtifactRecord[];
+  analysis: CaseAnalysisFile[];
   createdAt: string;
-  artifacts: ArtifactRecord[];
 };
 
 export type SaveChartInput = {
-  session: string;
-  /** Explicit id; auto-allocated (`<fn>_<tf>_<seq>`) when omitted. */
+  caseId: string;
+  /** Explicit chart id; auto-allocated (`<fn>_<tf>_<seq>`) when omitted. */
   id?: string;
   rendered: RenderedPng;
   spec: ChartSpec;
@@ -74,37 +112,41 @@ export type SaveChartInput = {
   analysisDigest?: Record<string, unknown>;
 };
 
-function sessionDir(session: string): string {
-  return join(REPORTS_ROOT, sanitizeSession(session));
+function caseDir(caseId: string): string {
+  return join(CASES_ROOT, sanitizeCase(caseId));
 }
 
-function readManifest(dir: string, session: string): SessionManifest {
-  const path = join(dir, 'manifest.json');
-  if (!existsSync(path)) return { session, createdAt: new Date().toISOString(), artifacts: [] };
-  return JSON.parse(readFileSync(path, 'utf8')) as SessionManifest;
+function chartDir(caseId: string): string {
+  return join(caseDir(caseId), 'charts');
 }
 
-/** Allocate the next sequential id for a fn/timeframe pair. */
-function nextId(manifest: SessionManifest, base: string): string {
+function readManifest(dir: string, caseId: string): CaseManifest {
+  const path = join(dir, 'case.json');
+  if (!existsSync(path)) return { caseId, bars: [], charts: [], analysis: [], createdAt: new Date().toISOString() };
+  return JSON.parse(readFileSync(path, 'utf8')) as CaseManifest;
+}
+
+function writeManifest(manifest: CaseManifest): void {
+  writeFileSync(join(caseDir(manifest.caseId), 'case.json'), JSON.stringify(manifest, null, 2) + '\n');
+}
+
+/** Allocate the next sequential chart id for a fn/timeframe pair. */
+function nextChartId(manifest: CaseManifest, base: string): string {
   let seq = 1;
-  const taken = new Set(manifest.artifacts.map((a) => a.id));
+  const taken = new Set(manifest.charts.map((c) => c.id));
   while (taken.has(`${base}_${String(seq).padStart(2, '0')}`)) seq++;
   return `${base}_${String(seq).padStart(2, '0')}`;
 }
 
-/**
- * Persist a rendered chart + sidecar and update the session manifest.
- * Returns the record that was written (it is what `/api/artifacts`
- * serves and what report assembly should quote).
- */
+/** Persist a rendered chart + sidecar; returns the record that was written. */
 export function saveChart(input: SaveChartInput): ArtifactRecord {
-  const dir = sessionDir(input.session);
+  const dir = chartDir(input.caseId);
   mkdirSync(dir, { recursive: true });
-  const manifest = readManifest(dir, sanitizeSession(input.session));
+  const manifest = readManifest(caseDir(input.caseId), sanitizeCase(input.caseId));
 
   const fn = input.spec.meta.provenance?.fn ?? 'chart';
   const base = `${fn}_${input.spec.meta.timeframe}`.replace(/[^a-zA-Z0-9._-]+/g, '-');
-  const id = input.id != null && input.id !== '' ? input.id : nextId(manifest, base);
+  const id = input.id != null && input.id !== '' ? input.id : nextChartId(manifest, base);
 
   const pngName = `${id}.png`;
   const jsonName = `${id}.json`;
@@ -112,9 +154,9 @@ export function saveChart(input: SaveChartInput): ArtifactRecord {
 
   const record: ArtifactRecord = {
     id,
-    session: sanitizeSession(input.session),
-    file: pngName,
-    sidecar: jsonName,
+    caseId: sanitizeCase(input.caseId),
+    file: `charts/${pngName}`,
+    sidecar: `charts/${jsonName}`,
     format: 'png',
     width: input.rendered.width,
     height: input.rendered.height,
@@ -134,30 +176,81 @@ export function saveChart(input: SaveChartInput): ArtifactRecord {
   };
   writeFileSync(join(dir, jsonName), JSON.stringify(record, null, 2) + '\n');
 
-  manifest.artifacts.push(record);
-  writeFileSync(join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
+  manifest.charts.push(record);
+  writeManifest(manifest);
   return record;
 }
 
-/** All sessions with their manifests (empty artifacts array on read errors). */
-export function listArtifacts(): Array<SessionManifest> {
-  if (!existsSync(REPORTS_ROOT)) return [];
-  return readdirSync(REPORTS_ROOT, { withFileTypes: true })
+/**
+ * Pin a data snippet: the exact bars a timeframe query ran on, stored as
+ * a CSV under `data/` and referenced from the manifest. Keeps every
+ * chart in the case recomputable even after the source feed updates.
+ */
+export function saveCaseBars(caseId: string, timeframe: string, bars: OhlcvBar[], csv: string): CaseBarsFile {
+  const dir = join(caseDir(caseId), 'data');
+  mkdirSync(dir, { recursive: true });
+  const manifest = readManifest(caseDir(caseId), sanitizeCase(caseId));
+
+  const file = `bars_${timeframe.replace(/[^a-zA-Z0-9._-]/g, '')}.csv`;
+  writeFileSync(join(dir, file), csv);
+
+  const entry: CaseBarsFile = {
+    timeframe,
+    file: `data/${file}`,
+    from: bars[0]?.time ?? 0,
+    to: bars[bars.length - 1]?.time ?? 0,
+    rows: bars.length,
+  };
+  manifest.bars = manifest.bars.filter((b) => b.timeframe !== timeframe); // one per timeframe per case
+  manifest.bars.push(entry);
+  writeManifest(manifest);
+  return entry;
+}
+
+/** Store a raw analysis output (used by the CLI / HTTP when saving). */
+export function saveCaseAnalysis(caseId: string, fn: string, payload: unknown): CaseAnalysisFile {
+  const dir = join(caseDir(caseId), 'analysis');
+  mkdirSync(dir, { recursive: true });
+  const manifest = readManifest(caseDir(caseId), sanitizeCase(caseId));
+
+  const file = `${fn.replace(/[^a-zA-Z0-9._-]/g, '-')}.json`;
+  writeFileSync(join(dir, file), JSON.stringify(payload, null, 2) + '\n');
+
+  manifest.analysis = manifest.analysis.filter((a) => a.fn !== fn);
+  manifest.analysis.push({ fn, file: `analysis/${file}` });
+  writeManifest(manifest);
+  return { fn, file: `analysis/${file}` };
+}
+
+/** Stamp the reproducibility anchor (source CSV hash) onto a case. */
+export function setCaseSourceHash(caseId: string, sourceCsvSha256: string): void {
+  const manifest = readManifest(caseDir(caseId), sanitizeCase(caseId));
+  manifest.sourceCsvSha256 = sourceCsvSha256;
+  writeManifest(manifest);
+}
+
+/** All cases with manifests that contain at least one chart. */
+export function listCases(): Array<CaseManifest> {
+  if (!existsSync(CASES_ROOT)) return [];
+  return readdirSync(CASES_ROOT, { withFileTypes: true })
     .filter((e) => e.isDirectory())
     .map((e) => {
       try {
-        return readManifest(join(REPORTS_ROOT, e.name), e.name);
+        return readManifest(join(CASES_ROOT, e.name), e.name);
       } catch {
-        return { session: e.name, createdAt: '', artifacts: [] };
+        return { caseId: e.name, bars: [], charts: [], analysis: [], createdAt: '' };
       }
     })
-    .filter((m) => m.artifacts.length > 0);
+    .filter((m) => m.charts.length > 0);
 }
 
-/** Absolute path of an artifact file inside a session (traversal-safe). */
-export function artifactPath(session: string, file: string): string | null {
+/**
+ * Absolute path of a case file (traversal-safe: `file` must be a plain
+ * name, path segments decoded from the manifest's own entries).
+ */
+export function caseFilePath(caseId: string, sub: 'charts' | 'data' | 'analysis' | 'report', file: string): string | null {
   const safe = /^[\w.-]+$/.test(file) ? file : null;
   if (safe == null) return null;
-  const path = join(sessionDir(session), safe);
+  const path = join(caseDir(caseId), sub, safe);
   return existsSync(path) ? path : null;
 }

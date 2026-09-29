@@ -5,27 +5,56 @@ analysis functions. Any analysis result becomes a PNG with a **sidecar
 manifest**, ready to be referenced by an LLM assembling an HTML report.
 
 ```
-analysis fn → ChartSpec (pure JSON) → SVG → PNG → reports/<session>/<id>.png + <id>.json
+analysis fn → ChartSpec (pure JSON) → SVG → PNG + sidecar manifest
+                                    → cases/<case>/{data, analysis, charts} → HTML report
 ```
+
+## Cases — self-contained artifact folders
+
+```
+cases/<case-id>/
+  case.json            # manifest: symbol, range, sourceCsvSha256, bars[], charts[], analysis[]
+  data/                # pinned data snippets — the EXACT bars each analysis ran on
+    bars_1H.csv
+    bars_5m.csv
+  analysis/            # raw function outputs, one JSON per fn
+    signal_1H_5m.json
+  charts/              # rendered PNGs + sidecars
+    signal_1H_5m_01.png
+    signal_1H_5m_01.json
+  report/
+    index.html         # LLM-assembled report (optional)
+```
+
+Pinning the used bars (plus `sourceCsvSha256` of the feed) makes every
+chart recomputable even after the source data updates — a report's
+claims stay verifiable indefinitely.
 
 ## Three surfaces (same semantics everywhere)
 
 ```bash
-# CLI — analysis + render + save in one command
+# CLI — analysis + render + save in one command (case = pinned folder)
 npm run chart -- --fn signal --start 2025-08-01 --end 2025-09-01 \
-    --timeframe 1H --ltf-timeframe 5m --minRR 1.5 --session aug-long
+    --timeframe 1H --ltf-timeframe 5m --minRR 1.5 --case aug-long
 
 # HTTP — PNG right back (or svg/spec/json)
 curl 'http://localhost:5200/api/chart?fn=zones-merged&start=2025-09-01&end=2025-10-01&timeframe=1H' -o zones.png
-curl 'http://localhost:5200/api/chart?fn=signal&start=2025-08-01&end=2025-09-01&timeframe=1H&ltfTimeframe=5m&minRR=1.5&format=json&save=1&session=aug-long'
+curl 'http://localhost:5200/api/chart?fn=signal&start=2025-08-01&end=2025-09-01&timeframe=1H&ltfTimeframe=5m&minRR=1.5&format=json&save=1&case=aug-long'
+
+# Agent-authored chart: POST any ChartSpec body → PNG (or ?format=svg)
+curl -X POST http://localhost:5200/api/chart -H 'content-type: application/json' \
+    --data-binary @spec.json -o agent.png
+
+# CLI twin of the POST: render a spec file without running analysis
+npm run chart -- --spec spec.json --out agent.png
 
 # Browser — WYSIWYG quick capture on the live chart (Capture PNG button
 # or window.ustec.capturePng({ title }))
 ```
 
-`GET /api/artifacts` lists saved sessions; `/api/artifacts/<session>/<file>`
-serves the PNG/JSON. Output is **deterministic**: the same query renders
-byte-identical PNGs (bundled fonts, no timestamps in pixels).
+`GET /api/artifacts` lists cases; `/api/artifacts/<case>/<charts|data|analysis|report>/<file>`
+serves the png/json/csv. Output is **deterministic**: the same query
+renders byte-identical PNGs (bundled fonts, no timestamps in pixels).
 
 ## Chart types (fn → view)
 
@@ -72,15 +101,17 @@ The separator is `@` because time values contain colons.
 
 ## The LLM assembly contract
 
-Each `<id>.png` has `<id>.json` — the **sidecar**: `caption`, `altText`,
-`provenance` (exact query), `analysisDigest` (bias/signals key fields),
-`sha256`. When assembling a report:
+Each chart `<id>.png` has `<id>.json` — the **sidecar** (caption,
+provenance, analysisDigest, sha256). The case manifest (`case.json`) is
+the single entry point: it lists pinned bars, analysis outputs and every
+chart with its sidecar. When assembling a report:
 
-1. Call `/api/chart` (or CLI) with `save=1`/`--session <name>`.
-2. Read `/api/artifacts` → sessions → sidecars.
-3. Copy `report-template.html` into the session dir; fill `#report-summary`
-   and one `<figure>` per sidecar, quoting **caption/altText verbatim**
-   — never re-derive numbers from pixels.
+1. Render with `save=1` / `--case <name>` — pins `data/` (exact bars)
+   and `analysis/` (raw outputs) alongside the charts.
+2. Read `/api/artifacts` (or each case's `case.json`) → charts → sidecars.
+3. Copy `report-template.html` into `cases/<case>/report/`; fill
+   `#report-summary` and one `<figure>` per sidecar, quoting
+   **caption/altText verbatim** — never re-derive numbers from pixels.
 
 Report pages are dark-themed via `src/i18n.ts` (`report.*` keys), the
 same bilingual EN/VI system as the app, with a language toggle.

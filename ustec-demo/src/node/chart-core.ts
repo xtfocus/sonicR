@@ -9,6 +9,7 @@
  */
 
 import type { RangeQueryApi } from '../range-query-api';
+import type { OhlcvBar } from '../analysis/types';
 import type { ChartSpec } from '../viz/types';
 import {
   liquidityChart,
@@ -40,6 +41,10 @@ export type ChartOutcome = {
   /** Present for `signal` — quoted verbatim into the sidecar digest. */
   signal?: SignalChartResult['analysis'];
   caption: string;
+  /** The exact bars the analysis ran on (for case data pinning). */
+  bars: OhlcvBar[];
+  /** The LTF trigger series for `signal` (for case data pinning). */
+  ltfBars?: OhlcvBar[];
 };
 
 function parseNumber(params: Record<string, string>, key: string): number | undefined {
@@ -85,7 +90,13 @@ export function buildChart(api: RangeQueryApi, req: ChartRequest): ChartOutcome 
       title: req.title,
       layout: req.layout,
     });
-    return { spec: result.spec, signal: result.analysis, caption: signalCaption(symbol, tfLabel, result) };
+    return {
+      spec: result.spec,
+      signal: result.analysis,
+      caption: signalCaption(symbol, tfLabel, result),
+      bars: htf.bars,
+      ltfBars: ltf.bars,
+    };
   }
 
   const spec =
@@ -94,7 +105,7 @@ export function buildChart(api: RangeQueryApi, req: ChartRequest): ChartOutcome 
       : fn === 'zones-merged'
         ? zonesChart(htf.bars, symbol, tfLabel, { k, title: req.title, layout: req.layout })
         : liquidityChart(htf.bars, symbol, tfLabel, { k, title: req.title, layout: req.layout });
-  return { spec, caption: `${spec.meta.title} — ${spec.meta.subtitle}` };
+  return { spec, caption: `${spec.meta.title} — ${spec.meta.subtitle}`, bars: htf.bars };
 }
 
 /** One-sentence verdict for the money chart, quoting exact signal fields. */

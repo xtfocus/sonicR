@@ -64,29 +64,36 @@ Annotation kinds: `level@price@label`, `vline@time@label`,
 
 ## Artifact contract (the LLM report assembly rule)
 
-Every chart saved to a session produces:
+Every chart saved to a case produces a self-contained folder:
 
 ```
-reports/<session>/
-  manifest.json   # session index
-  <id>.png        # the rendered chart
-  <id>.json       # sidecar — THE ground truth
+cases/<case>/
+  case.json      # manifest: symbol, range, sourceCsvSha256, bars[], charts[], analysis[]
+  data/bars_{tf}.csv        # pinned data — the exact bars the analysis ran on
+  analysis/<fn>.json        # raw analysis output
+  charts/<id>.png + .json   # rendered chart + sidecar
+  report/                   # assembled HTML report (optional)
 ```
 
 The sidecar carries `caption` (one-sentence verdict with exact numbers,
 e.g. "USTEC 1H 2025-08-20 → 2025-09-01: HH_HL long only; OB POI
 23177–23212; entry 23212, stop 23165, R:R 1.96, 7 targets"), `altText`,
 `provenance` (the query), `analysisDigest` (bias, POI count, signals),
-and `sha256`.
+and `sha256`. The pinned `data/` CSV + `sourceCsvSha256` make every
+figure recomputable even after the feed updates.
 
 **When assembling an HTML report: quote the sidecar verbatim — never
 re-derive numbers from pixels.** Flow:
 
-1. `npm run chart -- … --session <name>` (or `/api/chart…&save=1`)
-2. `GET /api/artifacts` (or read `manifest.json`) → list sidecars
-3. Copy `report-template.html` into `reports/<session>/`; fill
+1. `npm run chart -- … --case <name>` (or `/api/chart…&save=1`)
+2. Read `cases/<name>/case.json` (or `GET /api/artifacts`) → sidecars
+3. Copy `report-template.html` into `cases/<name>/report/`; fill
    `#report-summary` + one `<figure>` per artifact, `<img>` referencing
-   the PNG and the caption from its sidecar
+   `charts/<id>.png` and the caption from its sidecar
+
+Agents may also POST a full ChartSpec to `/api/chart` (or `--spec
+spec.json`) to hand-render bespoke annotated charts without running an
+analysis.
 
 The template is EN/VI bilingual (same `data-i18n` mechanism as the app).
 

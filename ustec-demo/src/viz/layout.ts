@@ -179,15 +179,19 @@ export function computeLayout(spec: ChartSpec, defaults: { width: number; height
   }
 
   const timeTicks: TimeTick[] = [];
-  const spanSeconds = bars.length > 1 ? bars[bars.length - 1]!.time - bars[0]!.time : 0;
-  const tickCount = Math.min(7, Math.max(2, Math.floor(area.width / 180)));
-  const tickEvery = Math.max(1, Math.floor(n / tickCount));
-  for (let i = 0; i < n; i += tickEvery) {
-    timeTicks.push({
-      index: i,
-      x: xForIndex(i),
-      label: formatTimeLabel(bars[i]!.time, spanSeconds),
-    });
+  // An empty-bars spec (pure annotation scenes from agents) has no time
+  // axis labels — everything else still renders.
+  if (bars.length > 0) {
+    const spanSeconds = bars.length > 1 ? bars[bars.length - 1]!.time - bars[0]!.time : 0;
+    const tickCount = Math.min(7, Math.max(2, Math.floor(area.width / 180)));
+    const tickEvery = Math.max(1, Math.floor(n / tickCount));
+    for (let i = 0; i < n; i += tickEvery) {
+      timeTicks.push({
+        index: i,
+        x: xForIndex(i),
+        label: formatTimeLabel(bars[i]!.time, spanSeconds),
+      });
+    }
   }
 
   return {

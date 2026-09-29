@@ -39,7 +39,9 @@ import type { UTCTimestamp } from 'lightweight-charts';
 import { parseFlagArgs } from './parse-args';
 import { describeAnalyzeFunctions, getAnalyzeFunction, runAnalyze } from '../analysis/registry';
 import { buildChart } from './chart-core';
-import { artifactPath, listArtifacts, saveChart } from './artifacts';
+import { caseFilePath, listCases, saveCaseAnalysis, saveCaseBars, saveChart, setCaseSourceHash } from './artifacts';
+import { sourceCsvSha256 } from './dataset';
+import { barsToCsv } from '../data-export';
 import { renderPng } from '../viz/png';
 import { renderSvg } from '../viz/svg';
 import { readFileSync } from 'node:fs';
@@ -195,8 +197,16 @@ function handleChart(url: URL, res: ServerResponse): void {
 
   const rendered = renderPng(outcome.spec);
   if (format === 'json' || qs.get('save') === '1') {
+    const caseId = qs.get('case') ?? qs.get('session') ?? 'default';
+    const fn = qs.get('fn') ?? '';
+    saveCaseBars(caseId, outcome.spec.meta.timeframe, outcome.bars, barsToCsv(outcome.bars));
+    if (outcome.ltfBars != null && qs.get('ltfTimeframe') != null) {
+      saveCaseBars(caseId, qs.get('ltfTimeframe')!, outcome.ltfBars, barsToCsv(outcome.ltfBars));
+    }
+    if (fn !== '') saveCaseAnalysis(caseId, fn, outcome.signal ?? { fn, caption: outcome.caption });
+    setCaseSourceHash(caseId, sourceCsvSha256());
     const record = saveChart({
-      session: qs.get('session') ?? 'default',
+      caseId,
       rendered,
       spec: outcome.spec,
       caption: outcome.caption,
@@ -214,7 +224,7 @@ function handleChart(url: URL, res: ServerResponse): void {
     res.writeHead(200, {
       'content-type': 'image/png',
       'x-artifact-id': record.id,
-      'x-artifact-session': record.session,
+      'x-artifact-case': record.caseId,
       'x-artifact-sha256': record.sha256,
     });
     res.end(rendered.png);
@@ -225,20 +235,73 @@ function handleChart(url: URL, res: ServerResponse): void {
 }
 
 function handleArtifactFile(url: URL, res: ServerResponse): void {
-  const parts = url.pathname.split('/').filter(Boolean); // api, artifacts, session…, file
+  // /api/artifacts/<case>/<sub>/<file>  where sub ∈ charts|data|analysis|report
+  const parts = url.pathname.split('/').filter(Boolean); // api, artifacts, case, sub, file
   const file = parts[parts.length - 1] ?? '';
-  const session = parts.slice(2, -1).join('/');
-  const path = artifactPath(session, file);
+  const sub = parts[parts.length - 2] ?? '';
+  const caseId = parts.slice(2, parts.length - 2).join('/');
+  const allowed = new Set(['charts', 'data', 'analysis', 'report']);
+  if (!allowed.has(sub)) {
+    sendJson(res, 404, { error: `Unknown artifact kind '${sub}'.` });
+    return;
+  }
+  const path = caseFilePath(caseId, sub as 'charts' | 'data' | 'analysis' | 'report', file);
   if (path == null) {
-    sendJson(res, 404, { error: `No artifact '${file}' in session '${session}'.` });
+    sendJson(res, 404, { error: `No artifact '${file}' in case '${caseId}/${sub}'.` });
     return;
   }
+  const body = readFileSync(path);
   if (file.endsWith('.json')) {
-    sendJson(res, 200, JSON.parse(readFileSync(path, 'utf8')));
+    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+    res.end(body);
     return;
   }
-  res.writeHead(200, { 'content-type': 'image/png' });
-  res.end(readFileSync(path));
+  res.writeHead(200, {
+    'content-type': file.endsWith('.svg') ? 'image/svg+xml' : file.endsWith('.csv') ? 'text/csv; charset=utf-8' : 'image/png',
+  });
+  res.end(body);
+}
+
+/** POST /api/chart — agent-authored ChartSpec body → PNG (or ?format=svg). */
+function handleChartPost(req: IncomingMessage, res: ServerResponse): void {
+  const chunks: Buffer[] = [];
+  req.on('data', (chunk: Buffer) => chunks.push(chunk));
+  req.on('end', () => {
+    try {
+      const raw = JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+      if (!isChartSpec(raw)) {
+        sendJson(res, 400, { error: 'Body must be a ChartSpec JSON: { meta, bars, overlays?, layout? }.' });
+        return;
+      }
+      const spec = raw;
+      const format = new URL(req.url ?? '/', 'http://localhost').searchParams.get('format') ?? 'png';
+      if (format === 'svg') {
+        res.writeHead(200, { 'content-type': 'image/svg+xml; charset=utf-8' });
+        res.end(renderSvg(spec));
+        return;
+      }
+      if (format !== 'png' && format !== 'spec') {
+        sendJson(res, 400, { error: `Invalid format '${format}'. Use png, svg or spec.` });
+        return;
+      }
+      if (format === 'spec') {
+        sendJson(res, 200, spec);
+        return;
+      }
+      const rendered = renderPng(spec);
+      res.writeHead(200, { 'content-type': 'image/png' });
+      res.end(rendered.png);
+    } catch (err) {
+      sendJson(res, 400, { error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+}
+
+/** Minimal shape guard for external ChartSpec JSON (POST body). */
+function isChartSpec(value: unknown): value is ChartSpec {
+  if (typeof value !== 'object' || value == null) return false;
+  const spec = value as Partial<ChartSpec>;
+  return Array.isArray(spec.bars) && spec.meta != null && typeof spec.meta.symbol === 'string';
 }
 
 createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -272,8 +335,12 @@ createServer((req: IncomingMessage, res: ServerResponse) => {
     }
     return;
   }
+  if (req.method === 'POST' && url.pathname === '/api/chart') {
+    handleChartPost(req, res);
+    return;
+  }
   if (req.method === 'GET' && url.pathname === '/api/artifacts') {
-    sendJson(res, 200, { sessions: listArtifacts() });
+    sendJson(res, 200, { cases: listCases() });
     return;
   }
   if (req.method === 'GET' && url.pathname.startsWith('/api/artifacts/')) {
@@ -282,10 +349,10 @@ createServer((req: IncomingMessage, res: ServerResponse) => {
   }
   sendJson(res, 404, {
     error: 'not found',
-    hint: 'GET /api/range | /api/functions | /api/analyze?fn=… | /api/chart?fn=…&start=…&end=… | /api/artifacts',
+    hint: 'GET /api/range | /api/functions | /api/analyze?fn=… | GET|POST /api/chart | /api/artifacts',
   });
 }).listen(port, () => {
   console.log(
-    `USTEC API on http://localhost:${port} — /api/range, /api/functions, /api/analyze, /api/chart, /api/artifacts — Ctrl+C to stop`
+    `USTEC API on http://localhost:${port} — /api/range, /api/functions, /api/analyze, /api/chart (GET/POST), /api/artifacts — Ctrl+C to stop`
   );
 });
