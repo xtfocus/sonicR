@@ -17,11 +17,12 @@
 
 import { writeFileSync } from 'node:fs';
 import { loadApi } from './dataset';
-import { parseFlagArgs } from './parse-args';
+import { parseFlagArgs, parseFlagArgsAll } from './parse-args';
 import { buildChart, CHART_FNS } from './chart-core';
 import { saveChart } from './artifacts';
 import { renderPng } from '../viz/png';
 import { renderSvg } from '../viz/svg';
+import { parseAnnotations } from '../viz/annotate';
 
 const USAGE = `Usage: npm run chart -- --fn <id> --start <time> --end <time> [options]
 
@@ -37,7 +38,9 @@ const USAGE = `Usage: npm run chart -- --fn <id> --start <time> --end <time> [op
   --out <path|stdout>  write elsewhere; 'stdout' pipes raw bytes
   --csv <path>         source CSV override
   --help               show this help
-
+  --annotate <spec>     repeatable freeform annotation, e.g.
+                       --annotate 'level@24600@watch' --annotate 'text@2025-09-08 14:00,26250@note'
+                       kinds: level vline marker text zone (@-separated; see src/viz/annotate.ts)
   Other flags are forwarded to the analysis (e.g. --k 8 --minRR 1.5)`;
 
 function fail(message: string): never {
@@ -47,9 +50,10 @@ function fail(message: string): never {
 
 const CONTROL = new Set([
   'fn', 'start', 'end', 'timeframe', 'ltf-timeframe', 'session', 'title',
-  'width', 'height', 'dpi', 'theme', 'format', 'out', 'csv', 'help',
+  'width', 'height', 'dpi', 'theme', 'format', 'out', 'csv', 'help', 'annotate',
 ]);
 
+const allArgs = parseFlagArgsAll(process.argv.slice(2));
 const args = parseFlagArgs(process.argv.slice(2));
 if (args.has('help')) {
   console.log(USAGE);
@@ -65,6 +69,7 @@ const params: Record<string, string> = {};
 for (const [key, value] of args) {
   if (!CONTROL.has(key)) params[key] = value;
 }
+const annotations = (allArgs.get('annotate') ?? []).filter((v) => v !== '');
 
 const width = args.get('width') != null ? Number(args.get('width')) : undefined;
 const height = args.get('height') != null ? Number(args.get('height')) : undefined;
@@ -97,6 +102,14 @@ try {
   });
 } catch (err) {
   fail(err instanceof Error ? err.message : String(err));
+}
+
+if (annotations.length > 0) {
+  try {
+    outcome.spec.overlays.push(...parseAnnotations(annotations, (s) => api.parseTime(s)));
+  } catch (err) {
+    fail(err instanceof Error ? err.message : String(err));
+  }
 }
 
 const format = args.get('format') ?? 'png';
