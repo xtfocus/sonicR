@@ -17,7 +17,7 @@ layer turns that JSON into charts humans and LLMs consume. One pipeline:
 
 ```
 analysis function → ChartSpec (JSON) → SVG → PNG + sidecar manifest
-                                        → reports/<session>/ → HTML report
+                                        → cases/<case>/ → HTML report
 ```
 
 ## When to use
@@ -41,7 +41,7 @@ analysis function → ChartSpec (JSON) → SVG → PNG + sidecar manifest
 ```bash
 # CLI — run analysis, render, save PNG + sidecar
 npm run chart -- --fn signal --start 2025-08-01 --end 2025-09-01 \
-    --timeframe 1H --ltf-timeframe 5m --minRR 1.5 --session aug-long
+    --timeframe 1H --ltf-timeframe 5m --minRR 1.5 --case aug-long
 
 # HTTP — PNG directly, or svg/spec/json
 curl 'http://localhost:5200/api/chart?fn=zones-merged&start=2025-09-01&end=2025-10-01&timeframe=1H' -o zones.png
