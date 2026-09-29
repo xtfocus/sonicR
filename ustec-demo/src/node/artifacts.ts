@@ -116,6 +116,16 @@ function caseDir(caseId: string): string {
   return join(CASES_ROOT, sanitizeCase(caseId));
 }
 
+/** Absolute path of a case directory (creates nothing). */
+export function caseDirPath(caseId: string): string {
+  return caseDir(caseId);
+}
+
+/** The parsed case manifest (empty shell when the case has none yet). */
+export function readCaseManifest(caseId: string): CaseManifest {
+  return readManifest(caseDir(caseId), sanitizeCase(caseId));
+}
+
 function chartDir(caseId: string): string {
   return join(caseDir(caseId), 'charts');
 }

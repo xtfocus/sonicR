@@ -32,22 +32,21 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { loadApi } from './dataset';
+import { loadApiWithMeta } from './dataset';
 import { buildCsvFilename } from '../data-export';
 import type { UTCTimestamp } from 'lightweight-charts';
 
 import { parseFlagArgs } from './parse-args';
 import { describeAnalyzeFunctions, getAnalyzeFunction, runAnalyze } from '../analysis/registry';
 import { buildChart } from './chart-core';
-import { caseFilePath, listCases, saveCaseAnalysis, saveCaseBars, saveChart, setCaseSourceHash } from './artifacts';
-import { sourceCsvSha256 } from './dataset';
-import { barsToCsv } from '../data-export';
+import { caseFilePath, listCases } from './artifacts';
+import { persistChartOutcome } from './case-writer';
 import { renderPng } from '../viz/png';
 import { renderSvg } from '../viz/svg';
 import { readFileSync } from 'node:fs';
 import type { ChartSpec } from '../viz/types';
 
-const api = loadApi();
+const { api, meta } = loadApiWithMeta();
 const port = Number(parseFlagArgs(process.argv.slice(2)).get('port')) || Number(process.env.PORT) || 5200;
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -197,25 +196,13 @@ function handleChart(url: URL, res: ServerResponse): void {
 
   const rendered = renderPng(outcome.spec);
   if (format === 'json' || qs.get('save') === '1') {
-    const caseId = qs.get('case') ?? qs.get('session') ?? 'default';
-    const fn = qs.get('fn') ?? '';
-    saveCaseBars(caseId, outcome.spec.meta.timeframe, outcome.bars, barsToCsv(outcome.bars));
-    if (outcome.ltfBars != null && qs.get('ltfTimeframe') != null) {
-      saveCaseBars(caseId, qs.get('ltfTimeframe')!, outcome.ltfBars, barsToCsv(outcome.ltfBars));
-    }
-    if (fn !== '') saveCaseAnalysis(caseId, fn, outcome.signal ?? { fn, caption: outcome.caption });
-    setCaseSourceHash(caseId, sourceCsvSha256());
-    const record = saveChart({
-      caseId,
-      rendered,
-      spec: outcome.spec,
-      caption: outcome.caption,
+    const record = persistChartOutcome({
+      caseId: qs.get('case') ?? qs.get('session') ?? 'default',
+      outcome,
+      fn: qs.get('fn') ?? '',
       start,
       end,
       ltfTimeframe: qs.get('ltfTimeframe') ?? undefined,
-      analysisDigest: outcome.signal
-        ? { bias: outcome.signal.bias, pois: outcome.signal.pois.length, signals: outcome.signal.signals }
-        : undefined,
     });
     if (format === 'json') {
       sendJson(res, 200, { record, pngBytes: rendered.png.length });
@@ -306,6 +293,10 @@ function isChartSpec(value: unknown): value is ChartSpec {
 
 createServer((req: IncomingMessage, res: ServerResponse) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
+  if (req.method === 'GET' && url.pathname === '/api/meta') {
+    sendJson(res, 200, meta);
+    return;
+  }
   if (req.method === 'GET' && url.pathname === '/api/range') {
     try {
       handleRange(url, res);

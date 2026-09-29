@@ -18,12 +18,11 @@
  */
 
 import { writeFileSync, readFileSync } from 'node:fs';
-import { loadApi, sourceCsvSha256 } from './dataset';
+import { loadApi } from './dataset';
 import { parseFlagArgs, parseFlagArgsAll } from './parse-args';
 import { buildChart, CHART_FNS } from './chart-core';
 import type { ChartOutcome } from './chart-core';
-import { saveCaseAnalysis, saveCaseBars, saveChart, setCaseSourceHash } from './artifacts';
-import { barsToCsv } from '../data-export';
+import { persistChartOutcome } from './case-writer';
 import { renderPng } from '../viz/png';
 import { renderSvg } from '../viz/svg';
 import { parseAnnotations } from '../viz/annotate';
@@ -153,34 +152,14 @@ if (format === 'spec') {
     writeFileSync(out, rendered.png);
     console.log(JSON.stringify({ file: out, bytes: rendered.png.length, caption: outcome.caption }, null, 2));
   } else {
-    const caseId = args.get('case') ?? args.get('session') ?? 'default';
-    // Case pinning: the exact bars used (data/) + the analysis output
-    // (analysis/) snapshots land next to the charts, keyed to the source
-    // CSV hash for reproducibility.
-    saveCaseBars(caseId, outcome.spec.meta.timeframe, outcome.bars, barsToCsv(outcome.bars));
-    const ltfLabel = args.get('ltf-timeframe') ?? '5m';
-    if (outcome.ltfBars != null) {
-      saveCaseBars(caseId, ltfLabel, outcome.ltfBars, barsToCsv(outcome.ltfBars));
-    }
-    if (fn != null) {
-      saveCaseAnalysis(caseId, fn, outcome.signal ?? { fn, caption: outcome.caption });
-    }
-    setCaseSourceHash(caseId, sourceCsvSha256(args.get('csv')));
-    const record = saveChart({
-      caseId,
-      rendered,
-      spec: outcome.spec,
-      caption: outcome.caption,
+    const record = persistChartOutcome({
+      caseId: args.get('case') ?? args.get('session') ?? 'default',
+      outcome,
+      fn,
       start,
       end,
       ltfTimeframe: args.get('ltf-timeframe') ?? undefined,
-      analysisDigest: outcome.signal
-        ? {
-            bias: outcome.signal.bias,
-            pois: outcome.signal.pois.length,
-            signals: outcome.signal.signals,
-          }
-        : undefined,
+      csvPath: args.get('csv') ?? undefined,
     });
     console.log(JSON.stringify(record, null, 2));
   }

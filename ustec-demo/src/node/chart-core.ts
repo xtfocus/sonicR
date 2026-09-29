@@ -111,8 +111,11 @@ export function buildChart(api: RangeQueryApi, req: ChartRequest): ChartOutcome 
 /** One-sentence verdict for the money chart, quoting exact signal fields. */
 function signalCaption(symbol: string, timeframe: string, result: SignalChartResult): string {
   const { bias, signals } = result.analysis;
-  if (bias.bias === 'stand_aside' || signals.length === 0) {
-    return `${symbol} ${timeframe}: ${bias.structure} — regime gate closed (${bias.bias}), no signals.`;
+  if (bias.bias === 'stand_aside') {
+    return `${symbol} ${timeframe}: ${bias.structure} — regime gate closed (range), no signals.`;
+  }
+  if (signals.length === 0) {
+    return `${symbol} ${timeframe}: ${bias.structure} ${bias.bias.replace('_', ' ')} — no qualifying setups (no POI arrival + CHoCH trigger passing minRR).`;
   }
   const s = signals[0]!;
   const range = `${isoDate(result.spec.meta.from)} → ${isoDate(result.spec.meta.to)}`;

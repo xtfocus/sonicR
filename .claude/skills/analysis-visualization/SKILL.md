@@ -7,7 +7,9 @@ description: >
   can reference when assembling a final report. Covers the server-side
   deterministic renderer (structure/zones/liquidity/signal/pois/
   equilibrium/bias-timeline/mtf-stack), freeform annotation, PNG + sidecar
-  manifests, and the report-figure contract.
+  manifests, and the report-figure contract. For the full request →
+  report pipeline (range resolution, regime gate, standard case), the
+  analysis-workflow skill orchestrates this one + technical-analysis.
 ---
 
 # Analysis visualization & report artifacts

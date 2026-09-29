@@ -31,15 +31,41 @@ export function sourceCsvSha256(csvPath = process.env.USTEC_CSV ?? defaultCsvPat
 
 /** Build the query API; `csvPath` overrides the bundled public/data file. */
 export function loadApi(csvPath = process.env.USTEC_CSV ?? defaultCsvPath): RangeQueryApi {
+  return loadApiWithMeta(csvPath).api;
+}
+
+export type DatasetMeta = {
+  symbol: string;
+  timeframes: Array<{ label: string; seconds: number }>;
+  /** Full extent of the 1m source, UTC seconds — the range-discovery anchor. */
+  available: { start: number; end: number };
+};
+
+/**
+ * Build the query API plus dataset metadata (symbol, timeframes, the full
+ * 1m extent). The meta is what `/api/meta` serves and what agents use to
+ * resolve a time range without being given one.
+ */
+export function loadApiWithMeta(csvPath = process.env.USTEC_CSV ?? defaultCsvPath): { api: RangeQueryApi; meta: DatasetMeta } {
   const bars = parseUstecCsv(readFileSync(csvPath, 'utf8'));
   const byInterval = new Map(
     TIMEFRAMES.map((tf) => [tf.seconds, resampleOhlcSkipEmptyBuckets(bars, tf.seconds)])
   );
-  return createRangeQueryApi({
-    symbol: 'USTEC',
-    timeframes: TIMEFRAMES,
-    getDataset: (intervalSeconds) => byInterval.get(intervalSeconds) ?? [],
-    getActiveIntervalSeconds: () => DEFAULT_INTERVAL_SECONDS,
-    getSelection: () => null,
-  });
+  return {
+    api: createRangeQueryApi({
+      symbol: 'USTEC',
+      timeframes: TIMEFRAMES,
+      getDataset: (intervalSeconds) => byInterval.get(intervalSeconds) ?? [],
+      getActiveIntervalSeconds: () => DEFAULT_INTERVAL_SECONDS,
+      getSelection: () => null,
+    }),
+    meta: {
+      symbol: 'USTEC',
+      timeframes: TIMEFRAMES,
+      available: {
+        start: bars[0]?.time ?? 0,
+        end: bars[bars.length - 1]?.time ?? 0,
+      },
+    },
+  };
 }

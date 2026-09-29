@@ -116,6 +116,22 @@ chart with its sidecar. When assembling a report:
 Report pages are dark-themed via `src/i18n.ts` (`report.*` keys), the
 same bilingual EN/VI system as the app, with a language toggle.
 
+## One-command standard report
+
+```bash
+# bias scan + 5 charts (timeline, structure, zones, liquidity, signal)
+# + data/analysis pinning + template + summary.json
+npm run report -- --start 2025-08-01 --end 2025-09-01 \
+    --timeframe 1H --ltf-timeframe 5m --minRR 1.5 --case aug-2025
+# → cases/aug-2025/report/{index.html, summary.json}
+```
+
+`report/summary.json` is the facts an LLM quotes (`regime`, chart
+captions, range); the narrative step fills `report/index.html` from it
++ the sidecars. `GET /api/meta` reports the dataset extent for
+range-resolution ("most recent window" anchors at `available.end` — the
+feed is historical, not live).
+
 ## Design rules
 
 - **Point-in-time / no lookahead** — the same guarantee as the analysis
