@@ -76,6 +76,12 @@ export interface RangeQueryApi {
   getSelection: () => RangeQueryResult | null;
   /** Serialize a result exactly like the UI's Export CSV payload. */
   toCsv: (result: RangeQueryResult) => string;
+  /**
+   * Browser-only: snapshot the current chart (WYSIWYG, replay-aware) to
+   * a titled PNG, trigger a download and return the data URL. Provided
+   * by main.ts; absent on the Node-side API.
+   */
+  capturePng?: (opts?: { title?: string }) => string;
 }
 
 declare global {

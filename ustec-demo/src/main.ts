@@ -238,6 +238,37 @@ async function main() {
     getSelection: () => selectionTool.getRange(),
   });
 
+  // Browser-only quick capture: WYSIWYG snapshot of the chart (+ replay
+  // window) composited onto a titled canvas, downloaded as PNG and
+  // returned as a data URL — the human-in-the-loop twin of the
+  // server-side `npm run chart`.
+  function capturePng(opts: { title?: string } = {}): string {
+    const shot = chart.takeScreenshot();
+    const tfLabel = timeframeSelect!.options[timeframeSelect!.selectedIndex]?.textContent ?? '';
+    const title = opts.title ?? `${SYMBOL} ${tfLabel} ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+    const titleHeight = 48;
+    const canvas = document.createElement('canvas');
+    canvas.width = shot.width;
+    canvas.height = shot.height + titleHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2D context unavailable');
+    ctx.fillStyle = '#131722';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#d1d4dc';
+    ctx.font = '600 24px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.fillText(title, 16, 32);
+    ctx.drawImage(shot, 0, titleHeight);
+
+    const dataUrl = canvas.toDataURL('image/png');
+    const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13);
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = `${SYMBOL}_${tfLabel}_${stamp}.png`;
+    a.click();
+    return dataUrl;
+  }
+  window.ustec.capturePng = capturePng;
+
   function getReplayCurrentTime(): UTCTimestamp {
     return data1m[replayCursorIndex]!.time as UTCTimestamp;
   }
@@ -729,6 +760,17 @@ async function main() {
     selectRangeToggleBtn.style.background = active ? '#1f2b47' : '#0f1520';
     selectRangeToggleBtn.style.borderColor = active ? '#4c6ef5' : '#2a3551';
   });
+
+  const capturePngBtn = document.getElementById('capture-png') as HTMLButtonElement | null;
+  if (capturePngBtn) {
+    capturePngBtn.addEventListener('click', () => {
+      try {
+        capturePng();
+      } catch (err) {
+        console.error('Capture failed:', err);
+      }
+    });
+  }
 
   const isTypingTarget = (t: EventTarget | null): boolean => {
     const el = t as HTMLElement | null;
