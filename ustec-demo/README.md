@@ -10,7 +10,7 @@ npm install
 npm run dev
 ```
 
-Open the URL shown (e.g. http://localhost:5173). The chart loads the CSV from `public/data/` and displays candlesticks.
+Open the URL Vite prints (e.g. http://localhost:5173). The chart loads the CSV from `public/data/`. `npm run dev` also starts the API on http://localhost:5200. Startup, split processes, and ports: [`../STACK.md`](../STACK.md).
 
 ## Query data without the browser
 

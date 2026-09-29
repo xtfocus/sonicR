@@ -1,8 +1,8 @@
 /**
  * Local HTTP API over the USTEC datasets — the curl-able twin of
  * window.ustec. Serves the bar-range endpoint, the analysis-function
- * registry and the chart-rendering endpoints; keep `npm run dev` for
- * the UI.
+ * registry and the chart-rendering endpoints. `npm run dev` starts this
+ * API beside Vite; `npm run serve-api` runs only the API.
  *
  *   npm run serve-api [-- --port 5200]
  *   curl 'http://localhost:5200/api/range?start=2025-09-01&end=2025-09-02&limit=10'

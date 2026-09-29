@@ -33,9 +33,8 @@ npx tsx src/node/chart-cli.ts --fn signal --start 2025-08-01 --end 2025-09-01 --
 # 4. FULL REPORT in one command (the standard flow)
 npx tsx src/node/report-cli.ts --start 2026-01-01 --end 2026-03-31 --timeframe 1H --ltf-timeframe 5m --minRR 1.5 --case jan-mar-2026
 
-# 5. View it (two options)
-npm run serve-api    # then open http://localhost:5200/api/report/jan-mar-2026
-npm run dev          # then open http://localhost:5275/cases.html (cases list)
+# 5. View it — one command starts UI :5173 and API :5200 (see STACK.md)
+npm run dev          # then open http://localhost:5173/cases.html
 
 # 6. HTTP twin (same semantics, for agents/notebooks)
 curl http://localhost:5200/api/meta
@@ -44,9 +43,10 @@ curl http://localhost:5200/api/analyze?fn=bias&start=2026-01-01&end=2026-03-31&t
 curl http://localhost:5200/api/chart?fn=zones-merged&start=2026-01-01&end=2026-03-31&timeframe=1H
 ```
 
-`npm run` scripts exist for all of the above (`analyze`, `chart`,
-`report`, `query`, `serve-api`); prefer `npx tsx src/node/...` when piping
-output to JSON parsers (npm prefix lines pollute stdout).
+`npm run` scripts exist for all of the above (`dev`, `dev:ui`, `analyze`,
+`chart`, `report`, `query`, `serve-api`). `dev` starts Vite and the API
+together; see `STACK.md`. Prefer `npx tsx src/node/...` when piping output
+to JSON parsers (npm prefix lines pollute stdout).
 
 ---
 
