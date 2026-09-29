@@ -330,6 +330,8 @@ function isChartSpec(value: unknown): value is ChartSpec {
 
 createServer((req: IncomingMessage, res: ServerResponse) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
+  // Local tool: let the vite dev server (different port) call the API.
+  res.setHeader('access-control-allow-origin', '*');
   if (req.method === 'GET' && url.pathname === '/api/meta') {
     sendJson(res, 200, meta);
     return;
