@@ -21,6 +21,25 @@ npm run query -- --start 2025-09-01 --end 2025-09-02 --limit 10 --format csv
 
 Same semantics as `window.ustec` on the page (see `help.html` / `DATA_EXPORT.md`); no replay truncation applies.
 
+## Analysis functions
+
+```bash
+npm run analyze -- --list                    # catalogue (--lang vi for Vietnamese)
+npm run analyze -- --fn structure --start 2025-09-01 --end 2025-12-01 --timeframe 1H
+npm run analyze -- --fn signal --start 2026-01-01 --end 2026-02-01 --timeframe 1H --ltf-timeframe 5m --minRR 1.5
+curl 'http://localhost:5200/api/analyze?fn=pivots&start=2025-09-01&end=2025-10-01&timeframe=1H&k=8'
+```
+
+Pure, point-in-time-safe structure / zone / signal functions over the OHLCV series
+(Sonic R workflow as callable building blocks). Same registry drives the CLI, the
+HTTP API and the Help page. See `ANALYSIS_FUNCTIONS.md`.
+
+## Language support
+
+The chart page and Help page are bilingual (English / Tiếng Việt). Use the
+language selector, or add `?lang=vi` to the URL; the choice persists in
+`localStorage`.
+
 ## Data
 
 - CSV is tab-separated: `<DATE>`, `<TIME>`, `<OPEN>`, `<HIGH>`, `<LOW>`, `<CLOSE>`, …

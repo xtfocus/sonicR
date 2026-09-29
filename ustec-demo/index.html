@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>USTEC M1 – Lightweight Charts</title>
+    <title data-i18n="app.title">USTEC M1 – Lightweight Charts</title>
     <style>
       :root {
         --ui-scale: 2.0;
@@ -48,7 +48,7 @@
     >
       <div style="pointer-events: auto;">
         <label>
-          Timeframe:
+          <span data-i18n="app.timeframe">Timeframe:</span>
           <select
             id="timeframe"
             style="
@@ -75,7 +75,7 @@
             cursor: pointer;
           "
         >
-          Enter Replay
+          <span data-i18n="replay.enter">Enter Replay</span>
         </button>
         <button
           id="select-range-toggle"
@@ -89,7 +89,7 @@
             cursor: pointer;
           "
         >
-          Select Range
+          <span data-i18n="select.range">Select Range</span>
         </button>
         <a
           href="/help.html"
@@ -105,8 +105,25 @@
             text-decoration: none;
           "
         >
-          Help</a
+          <span data-i18n="app.help">Help</span></a
         >
+        <label style="margin-left: 10px;">
+          <span data-i18n="app.lang">Language</span>:
+          <select
+            id="lang-select"
+            style="
+              margin-left: 6px;
+              background: #0f1520;
+              color: #d1d4dc;
+              border: 1px solid #2a3551;
+              border-radius: 6px;
+              padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+            "
+          >
+            <option value="en">English</option>
+            <option value="vi">Tiếng Việt</option>
+          </select>
+        </label>
       </div>
 
       <div
@@ -130,7 +147,7 @@
             cursor: pointer;
           "
         >
-          Play
+          <span data-i18n="replay.play">Play</span>
         </button>
         <button
           id="replay-step"
@@ -143,10 +160,10 @@
             cursor: pointer;
           "
         >
-          Step
+          <span data-i18n="replay.step">Step</span>
         </button>
         <label>
-          Speed:
+          <span data-i18n="replay.speed">Speed:</span>
           <select
             id="replay-speed"
             style="
@@ -176,7 +193,7 @@
         />
       </div>
       <div style="margin-top: 6px; pointer-events: auto; display: flex; align-items: center; gap: 8px;">
-        <label for="replay-jump-datetime">Jump time (UTC):</label>
+        <label for="replay-jump-datetime"><span data-i18n="replay.jump">Jump time (UTC):</span></label>
         <input
           id="replay-jump-datetime"
           type="text"

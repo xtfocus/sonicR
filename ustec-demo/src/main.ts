@@ -26,6 +26,7 @@ import {
   TIMEFRAMES,
   USTEC_CSV_FILENAME,
 } from './ustec-data';
+import { initLangSelect, t } from './i18n';
 // ============================================
 // 1. CREATE THE CHART (from getting-started ideas)
 // ============================================
@@ -195,6 +196,10 @@ async function main() {
   let lastReplayRenderedInterval: number | null = null;
   let lastReplayRenderedStartIndex = 0;
   let lastReplayRenderedVisibleCount = 0;
+
+  // Dynamic UI text nodes that must be re-translated on language change
+  // (the static nodes in index.html are handled by i18n.applyTranslations).
+  const dynamicLabels: Array<{ node: Text; key: string }> = [];
 
   // Effective dataset for a timeframe: all its bars, truncated at the replay
   // cursor when replaying (WYSIWYG). Backs the data selector tool and the
@@ -433,7 +438,7 @@ async function main() {
       replayTimer = null;
     }
     if (syncUi) updateReplaySliderFromTime();
-    replayPlayButton.textContent = 'Play';
+    replayPlayButton.textContent = t('replay.play');
   }
 
   function stepReplay(shouldSyncUi = true) {
@@ -461,7 +466,7 @@ async function main() {
       replayTimer = window.setTimeout(tick, stepDelayMs);
     };
     replayTimer = window.setTimeout(tick, stepDelayMs);
-    replayPlayButton.textContent = 'Pause';
+    replayPlayButton.textContent = t('replay.pause');
   }
 
   function stepReplayOneBarCurrentTimeframe() {
@@ -534,7 +539,7 @@ async function main() {
 
   function enterReplayMode() {
     isReplayMode = true;
-    replayModeToggleButton.textContent = 'Exit Replay';
+    replayModeToggleButton.textContent = t('replay.exit');
     setReplayControlsEnabled(true);
     updateReplaySliderFromTime();
     lastReplayRenderedInterval = null;
@@ -546,7 +551,7 @@ async function main() {
   function exitReplayMode() {
     stopReplay();
     isReplayMode = false;
-    replayModeToggleButton.textContent = 'Enter Replay';
+    replayModeToggleButton.textContent = t('replay.enter');
     setReplayControlsEnabled(false);
     lastReplayRenderedInterval = null;
     lastReplayRenderedStartIndex = 0;
@@ -611,7 +616,9 @@ async function main() {
       });
 
       waveLabel.appendChild(waveCheckbox);
-      waveLabel.appendChild(document.createTextNode('Show waves/legs'));
+      const waveText = document.createTextNode(t('indicators.waves'));
+      dynamicLabels.push({ node: waveText, key: 'indicators.waves' });
+      waveLabel.appendChild(waveText);
       waveWrap.appendChild(waveLabel);
 
       const obWrap = document.createElement('div');
@@ -632,7 +639,9 @@ async function main() {
       });
 
       obLabel.appendChild(obCheckbox);
-      obLabel.appendChild(document.createTextNode('Order blocks (LuxAlgo OB)'));
+      const obText = document.createTextNode(t('indicators.orderBlocks'));
+      dynamicLabels.push({ node: obText, key: 'indicators.orderBlocks' });
+      obLabel.appendChild(obText);
       obWrap.appendChild(obLabel);
       waveWrap.appendChild(obWrap);
       indicatorsMenu.appendChild(waveWrap);
@@ -655,7 +664,9 @@ async function main() {
     renderView(currentIntervalSeconds, false);
   });
   macroLabel.appendChild(macroCheckbox);
-  macroLabel.appendChild(document.createTextNode('NY Macro Times'));
+  const macroText = document.createTextNode(t('indicators.nyMacro'));
+  dynamicLabels.push({ node: macroText, key: 'indicators.nyMacro' });
+  macroLabel.appendChild(macroText);
   macroWrap.appendChild(macroLabel);
   indicatorsMenu.appendChild(macroWrap);
 
@@ -714,7 +725,7 @@ async function main() {
   selectRangeToggleBtn.addEventListener('click', () => {
     const active = !selectionTool.isActive();
     selectionTool.setEnabled(active);
-    selectRangeToggleBtn.textContent = active ? 'Selecting...' : 'Select Range';
+    selectRangeToggleBtn.textContent = t(active ? 'select.selecting' : 'select.range');
     selectRangeToggleBtn.style.background = active ? '#1f2b47' : '#0f1520';
     selectRangeToggleBtn.style.borderColor = active ? '#4c6ef5' : '#2a3551';
   });
@@ -752,6 +763,17 @@ async function main() {
     if (!isSpacePanDragging) return;
     isSpacePanDragging = false;
     applySpacePanCursor();
+  });
+
+  // Language toggle: static nodes come from i18n; refresh the bits this
+  // module owns (button labels set from state + the indicator menu labels).
+  const langSelect = document.getElementById('lang-select') as HTMLSelectElement | null;
+  if (langSelect) initLangSelect(langSelect);
+  window.addEventListener('langchange', () => {
+    for (const { node, key } of dynamicLabels) node.nodeValue = t(key);
+    replayModeToggleButton.textContent = t(isReplayMode ? 'replay.exit' : 'replay.enter');
+    replayPlayButton.textContent = t(replayTimer != null ? 'replay.pause' : 'replay.play');
+    selectRangeToggleBtn.textContent = t(selectionTool.isActive() ? 'select.selecting' : 'select.range');
   });
 
   console.log(

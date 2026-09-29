@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Help – USTEC M1 Demo</title>
+    <title data-i18n="help.title">Help – USTEC M1 Demo</title>
     <style>
       :root {
         --bg: #131722;
@@ -116,67 +116,104 @@
       .cmt {
         color: #7e88a3;
       }
+      .lang-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 12px 0 0;
+      }
+      .lang-row select {
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 4px 10px;
+      }
+      section.fn {
+        margin: 18px 0;
+        padding: 12px 14px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+      section.fn h3 {
+        margin-top: 0;
+      }
     </style>
+    <script type="module" crossorigin src="/assets/help-CYduPGpB.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/i18n-CHFjNUx9.js">
   </head>
   <body>
     <main>
-      <h1>USTEC M1 Demo — Help</h1>
+      <h1 data-i18n="help.heading">USTEC M1 Demo — Help</h1>
+      <p class="muted" data-i18n="help.chart.li1"></p>
+      <div class="lang-row">
+        <label for="lang-select"><span data-i18n="app.lang">Language</span>:</label>
+        <select id="lang-select">
+          <option value="en">English</option>
+          <option value="vi">Tiếng Việt</option>
+        </select>
+      </div>
       <p class="muted">
-        Candlestick chart of USTEC (Nasdaq 100) minute data with replay,
-        Sonic&nbsp;R tooling and a programmatic range-query API.
-        <a class="back" href="/">← back to the chart</a>
+        <span data-i18n="help.intro"
+          >Candlestick chart of USTEC (Nasdaq 100) minute data with replay, Sonic&nbsp;R tooling and a
+          programmatic range-query API.</span
+        >
+        <a class="back" href="/" data-i18n="help.back">← back to the chart</a>
       </p>
 
       <nav>
-        <a href="#chart">Chart</a>
-        <a href="#navigation">Navigation</a>
-        <a href="#replay">Replay</a>
-        <a href="#indicators">Indicators</a>
-        <a href="#select-range">Select Range</a>
-        <a href="#api">window.ustec API</a>
-        <a href="#terminal">Terminal</a>
-        <a href="#data">Data</a>
+        <a href="#chart" data-i18n="nav.chart">Chart</a>
+        <a href="#navigation" data-i18n="nav.navigation">Navigation</a>
+        <a href="#replay" data-i18n="nav.replay">Replay</a>
+        <a href="#indicators" data-i18n="nav.indicators">Indicators</a>
+        <a href="#select-range" data-i18n="nav.selectRange">Select Range</a>
+        <a href="#api" data-i18n="nav.api">window.ustec API</a>
+        <a href="#functions" data-i18n="nav.functions">Analysis functions</a>
+        <a href="#terminal" data-i18n="nav.terminal">Terminal</a>
+        <a href="#data" data-i18n="nav.data">Data</a>
       </nav>
 
-      <h2 id="chart">Chart &amp; timeframes</h2>
+      <h2 id="chart" data-i18n="help.chart.h">Chart &amp; timeframes</h2>
       <ul>
-        <li>Candlesticks rendered with <a href="https://www.tradingview.com/lightweight-charts/" target="_blank" rel="noopener">Lightweight Charts</a>.</li>
+        <li><span data-i18n="help.chart.li1">Candlesticks rendered with</span> <a href="https://www.tradingview.com/lightweight-charts/" target="_blank" rel="noopener">Lightweight Charts</a>.</li>
         <li>
-          Timeframe selector: <code>1m</code> <code>5m</code> <code>15m</code>
-          <code>30m</code> <code>1H</code> <code>1D</code>. Higher timeframes are
+          <span data-i18n="help.chart.li2.pre">Timeframe selector:</span>
+          <code>1m</code> <code>5m</code> <code>15m</code>
+          <code>30m</code> <code>1H</code> <code>1D</code><span data-i18n="help.chart.li2.post">. Higher timeframes are
           resampled from the 1-minute source; buckets with no underlying candle
-          are skipped.
+          are skipped.</span>
         </li>
       </ul>
 
-      <h2 id="navigation">Navigation</h2>
+      <h2 id="navigation" data-i18n="help.navigation.h">Navigation</h2>
       <ul>
-        <li>Mouse wheel: zoom the time axis. Drag: scroll the chart.</li>
-        <li>Hold <code>Space</code> + left-drag: pan the visible window (chart cursor changes; other tools stand down while panning).</li>
+        <li data-i18n="help.navigation.li1">Mouse wheel: zoom the time axis. Drag: scroll the chart.</li>
+        <li data-i18n="help.navigation.li2">Hold <code>Space</code> + left-drag: pan the visible window (chart cursor changes; other tools stand down while panning).</li>
       </ul>
 
-      <h2 id="replay">Bar replay</h2>
+      <h2 id="replay" data-i18n="help.replay.h">Bar replay</h2>
       <ul>
-        <li><code>Enter Replay</code> truncates the chart at the replay cursor and shows a trailing window (~1200 bars).</li>
-        <li>Controls: Play/Pause, Step, speed (<code>1x</code>–<code>10x</code>), position slider, and jump-to-time (<code>DD/MM/YYYY HH:MM</code>, UTC).</li>
-        <li>Everything is WYSIWYG in replay: indicators, session boxes and exports/API see only bars up to the cursor — the replayed future never leaks.</li>
+        <li data-i18n="help.replay.li1"><code>Enter Replay</code> truncates the chart at the replay cursor and shows a trailing window (~1200 bars).</li>
+        <li data-i18n="help.replay.li2">Controls: Play/Pause, Step, speed (<code>1x</code>–<code>10x</code>), position slider, and jump-to-time (<code>DD/MM/YYYY HH:MM</code>, UTC).</li>
+        <li data-i18n="help.replay.li3">Everything is WYSIWYG in replay: indicators, session boxes and exports/API see only bars up to the cursor — the replayed future never leaks.</li>
       </ul>
 
-      <h2 id="indicators">Indicators &amp; overlays</h2>
+      <h2 id="indicators" data-i18n="help.indicators.h">Indicators &amp; overlays</h2>
       <ul>
-        <li><strong>Sonic R</strong> — EMA structure with wave/leg patterns and entries; toggle <em>Show waves/legs</em> for details.</li>
-        <li><strong>Order blocks</strong> — LuxAlgo-style bullish/bearish order blocks.</li>
-        <li><strong>NY Macro Times</strong> — macro-time boxes for New York sessions.</li>
-        <li>Asia / London / New York session boxes are drawn automatically.</li>
+        <li data-i18n="help.indicators.li1"><strong>Sonic R</strong> — EMA structure with wave/leg patterns and entries; toggle <em>Show waves/legs</em> for details.</li>
+        <li data-i18n="help.indicators.li2"><strong>Order blocks</strong> — LuxAlgo-style bullish/bearish order blocks.</li>
+        <li data-i18n="help.indicators.li3"><strong>NY Macro Times</strong> — macro-time boxes for New York sessions.</li>
+        <li data-i18n="help.indicators.li4">Asia / London / New York session boxes are drawn automatically.</li>
       </ul>
 
-      <h2 id="select-range">Select Range tool</h2>
+      <h2 id="select-range" data-i18n="help.select.h">Select Range tool</h2>
       <ol>
-        <li>Click <code>Select Range</code> — the cursor becomes a crosshair.</li>
-        <li>Press and drag left→right (either direction works); both edges snap to the nearest bar.</li>
-        <li>On release a popup offers <strong>Export CSV</strong> (auto-named download), <strong>Copy Markdown</strong> (table to clipboard) and <strong>Clear</strong>.</li>
+        <li data-i18n="help.select.step1">Click <code>Select Range</code> — the cursor becomes a crosshair.</li>
+        <li data-i18n="help.select.step2">Press and drag left→right (either direction works); both edges snap to the nearest bar.</li>
+        <li data-i18n="help.select.step3">On release a popup offers <strong>Export CSV</strong> (auto-named download), <strong>Copy Markdown</strong> (table to clipboard) and <strong>Clear</strong>.</li>
       </ol>
-      <p>
+      <p data-i18n="help.select.p">
         <code>Escape</code> cancels an in-flight drag or clears the selection
         (the tool stays armed). The selection persists across timeframe
         switches — edges re-snap to bars of the active timeframe, and exports
@@ -184,86 +221,86 @@
         <code>DATA_EXPORT.md</code> for the CSV/filename conventions.
       </p>
 
-      <h2 id="api">Programmatic API — <code>window.ustec</code></h2>
-      <p>
+      <h2 id="api" data-i18n="help.api.h">Programmatic API — <code>window.ustec</code></h2>
+      <p data-i18n="help.api.p">
         Query bars for a time range from the console or scripts. The API
         returns exactly what the Select Range tool would export for the same
         bounds (replay-aware, inclusive edges).
       </p>
 
-      <h3>Methods</h3>
+      <h3 data-i18n="help.api.methods">Methods</h3>
       <table>
         <tr>
-          <th>Method</th><th>Returns</th><th>Description</th>
+          <th data-i18n="help.api.methods.method">Method</th><th data-i18n="help.api.methods.returns">Returns</th><th data-i18n="help.api.methods.desc">Description</th>
         </tr>
         <tr>
           <td><code>queryRange(start, end, opts?)</code></td>
           <td><code>RangeQueryResult</code></td>
-          <td>Bars with time in <code>[start, end]</code> (inclusive; swapped if reversed).</td>
+          <td data-i18n="help.api.m1.d">Bars with time in <code>[start, end]</code> (inclusive; swapped if reversed).</td>
         </tr>
         <tr>
           <td><code>getSelection()</code></td>
           <td><code>RangeQueryResult | null</code></td>
-          <td>Re-queries the current on-chart selection; <code>null</code> when none.</td>
+          <td data-i18n="help.api.m2.d">Re-queries the current on-chart selection; <code>null</code> when none.</td>
         </tr>
         <tr>
           <td><code>toCsv(result)</code></td>
           <td><code>string</code></td>
-          <td>CSV identical to the Export CSV payload.</td>
+          <td data-i18n="help.api.m3.d">CSV identical to the Export CSV payload.</td>
         </tr>
         <tr>
           <td><code>parseTime(input)</code></td>
           <td><code>number | null</code></td>
-          <td>Parses a time argument to UTC seconds.</td>
+          <td data-i18n="help.api.m4.d">Parses a time argument to UTC seconds.</td>
         </tr>
         <tr>
           <td><code>timeframes</code></td>
           <td>array</td>
-          <td>Available timeframes as <code>{ label, seconds }</code>.</td>
+          <td data-i18n="help.api.m5.d">Available timeframes as <code>{ label, seconds }</code>.</td>
         </tr>
       </table>
 
-      <h3>Options (<code>opts</code>)</h3>
+      <h3 data-i18n="help.api.opts">Options (<code>opts</code>)</h3>
       <table>
-        <tr><th>Option</th><th>Type</th><th>Default</th><th>Meaning</th></tr>
+        <tr><th data-i18n="help.api.opts.option">Option</th><th data-i18n="help.api.opts.type">Type</th><th data-i18n="help.api.opts.default">Default</th><th data-i18n="help.api.opts.meaning">Meaning</th></tr>
         <tr>
           <td><code>timeframe</code></td>
           <td>label or seconds</td>
-          <td>active chart timeframe</td>
-          <td><code>'5m'</code>, <code>'1H'</code>, <code>300</code>, … (case-insensitive)</td>
+          <td data-i18n="help.api.opts.tf.def">active chart timeframe</td>
+          <td data-i18n="help.api.opts.tf.d"><code>'5m'</code>, <code>'1H'</code>, <code>300</code>, … (case-insensitive)</td>
         </tr>
         <tr>
           <td><code>limit</code></td>
           <td>positive integer</td>
-          <td>unlimited</td>
-          <td>Max rows returned, taken from the <strong>start</strong> of the range. Invalid values throw.</td>
+          <td data-i18n="help.api.opts.limit.def">unlimited</td>
+          <td data-i18n="help.api.opts.limit.d">Max rows returned, taken from the <strong>start</strong> of the range. Invalid values throw.</td>
         </tr>
       </table>
 
-      <h3>Result shape</h3>
+      <h3 data-i18n="help.api.result">Result shape</h3>
       <table>
-        <tr><th>Field</th><th>Meaning</th></tr>
-        <tr><td><code>symbol</code>, <code>timeframe</code>, <code>intervalSeconds</code></td><td>What was queried.</td></tr>
-        <tr><td><code>requested</code></td><td>Normalized bounds, UTC seconds (<code>lo</code> before <code>hi</code>).</td></tr>
-        <tr><td><code>from</code>, <code>to</code></td><td>First/last returned bar, <code>'YYYY-MM-DD HH:MM:SS'</code> UTC; reflect any <code>limit</code> truncation; <code>null</code> when empty.</td></tr>
-        <tr><td><code>barCount</code>, <code>bars</code></td><td>Row count and the bars: <code>{ time, open, high, low, close, volume }</code> (tick volume), ascending.</td></tr>
-        <tr><td><code>available</code></td><td>Full extent of the queried (effective) dataset, UTC seconds.</td></tr>
+        <tr><th data-i18n="help.api.result.field">Field</th><th data-i18n="help.api.result.meaning">Meaning</th></tr>
+        <tr><td><code>symbol</code>, <code>timeframe</code>, <code>intervalSeconds</code></td><td data-i18n="help.api.r1">What was queried.</td></tr>
+        <tr><td><code>requested</code></td><td data-i18n="help.api.r2">Normalized bounds, UTC seconds (<code>lo</code> before <code>hi</code>).</td></tr>
+        <tr><td><code>from</code>, <code>to</code></td><td data-i18n="help.api.r3">First/last returned bar, <code>'YYYY-MM-DD HH:MM:SS'</code> UTC; reflect any <code>limit</code> truncation; <code>null</code> when empty.</td></tr>
+        <tr><td><code>barCount</code>, <code>bars</code></td><td data-i18n="help.api.r4">Row count and the bars: <code>{ time, open, high, low, close, volume }</code> (tick volume), ascending.</td></tr>
+        <tr><td><code>available</code></td><td data-i18n="help.api.r5">Full extent of the queried (effective) dataset, UTC seconds.</td></tr>
       </table>
 
-      <h3>Time formats</h3>
+      <h3 data-i18n="help.api.time">Time formats</h3>
       <ul>
-        <li>UTC epoch seconds: <code>1756724400</code></li>
-        <li>CSV convention (UTC): <code>'2025-09-01 09:30'</code>, <code>'2025-09-01 09:30:45'</code> (space or <code>T</code> separator)</li>
-        <li>Date-only (UTC midnight): <code>'2025-09-01'</code></li>
-        <li>ISO 8601 with timezone: <code>'2025-09-01T09:30:00Z'</code>, <code>'2025-09-01T11:30:00+02:00'</code></li>
+        <li data-i18n="help.api.tf1">UTC epoch seconds: <code>1756724400</code></li>
+        <li data-i18n="help.api.tf2">CSV convention (UTC): <code>'2025-09-01 09:30'</code>, <code>'2025-09-01 09:30:45'</code> (space or <code>T</code> separator)</li>
+        <li data-i18n="help.api.tf3">Date-only (UTC midnight): <code>'2025-09-01'</code></li>
+        <li data-i18n="help.api.tf4">ISO 8601 with timezone: <code>'2025-09-01T09:30:00Z'</code>, <code>'2025-09-01T11:30:00+02:00'</code></li>
       </ul>
-      <p class="muted">
+      <p class="muted" data-i18n="help.api.tf.note">
         Other ISO forms without a timezone are rejected — they would silently
         parse as local time. Unknown timeframes and invalid times throw with
         the accepted formats in the message.
       </p>
 
-      <h3>Examples</h3>
+      <h3 data-i18n="help.api.examples">Examples</h3>
       <pre><code><span class="cmt">// first 10 candles of September 2025 on the 1H timeframe</span>
 const r = window.ustec.queryRange('2025-09-01', '2025-10-01', { timeframe: '1H', limit: 10 });
 r.barCount;  <span class="cmt">// 10</span>
@@ -279,8 +316,33 @@ window.ustec.getSelection();
 <span class="cmt">// same CSV the Export button downloads</span>
 console.log(window.ustec.toCsv(r));</code></pre>
 
-      <h3 id="terminal">From the terminal — HTTP API &amp; CLI</h3>
-      <p>
+      <h2 id="functions" data-i18n="help.functions.h">Analysis functions</h2>
+      <p data-i18n="help.functions.p1">
+        A library of pure, point-in-time-safe functions over the OHLCV series —
+        the Sonic R workflow as callable building blocks: swing structure
+        (pivots/zigzag, BOS/CHoCH), zones (FVG, order blocks, supply/demand,
+        liquidity) and composite entry signals with entry/stop/targets.
+      </p>
+      <p data-i18n="help.functions.p2">
+        Every function runs from the CLI (<code>npm run analyze</code>) and the
+        HTTP API (<code>GET /api/analyze</code>), so notebooks and AI agents
+        can call them directly. <code>GET /api/functions</code> returns the
+        same catalogue below as JSON.
+      </p>
+      <pre><code><span class="cmt"># discovery (machine-readable catalogue; lang=en|vi)</span>
+curl 'http://localhost:5200/api/functions?lang=vi'
+
+<span class="cmt"># examples</span>
+curl 'http://localhost:5200/api/analyze?fn=pivots&amp;start=2025-09-01&amp;end=2025-10-01&amp;timeframe=1H&amp;k=8'
+curl 'http://localhost:5200/api/analyze?fn=signal&amp;start=2026-01-01&amp;end=2026-02-01&amp;timeframe=1H&amp;ltfTimeframe=5m&amp;minRR=1.5'
+npm run analyze -- --fn structure --start 2025-09-01 --end 2025-12-01 --timeframe 1H
+npm run analyze -- --list</code></pre>
+      <div id="analysis-functions">
+        <p class="muted">Loading function catalogue…</p>
+      </div>
+
+      <h3 id="terminal" data-i18n="help.terminal.h">From the terminal — HTTP API &amp; CLI</h3>
+      <p data-i18n="help.terminal.p">
         The same query core runs outside the browser (from
         <code>ustec-demo/</code>). Server-side there is no replay cursor:
         queries always see the full dataset. Default timeframe when omitted
@@ -292,20 +354,20 @@ curl 'http://localhost:5200/api/range?start=2025-09-01&amp;end=2025-09-02&amp;ti
 
 <span class="cmt"># CLI (json default; --format csv for pipeable rows)</span>
 npm run query -- --start '2025-09-01 09:30' --end '2025-09-05 16:00' --limit 10 --format csv</code></pre>
-      <p class="muted">
+      <p class="muted" data-i18n="help.terminal.note">
         HTTP errors return 400 with <code>{ error }</code>; unknown paths 404.
         CSV responses carry the UI's export filename in
         <code>Content-Disposition</code>.
       </p>
 
-      <h2 id="data">Data &amp; conventions</h2>
+      <h2 id="data" data-i18n="help.data.h">Data &amp; conventions</h2>
       <ul>
-        <li>Source: MT5 tab-separated export <code>USTEC_M1_202508010000_202603031408.csv</code> (2025-08-01 → 2026-03-03, ~205k 1m candles).</li>
-        <li>All timestamps are UTC; <code>volume</code> is tick volume (<code>TICKVOL</code>), summed when resampled.</li>
-        <li>CSV header: <code>time,open,high,low,close,tickvol</code>; export filenames follow <code>&lt;SYMBOL&gt;_&lt;TIMEFRAME&gt;_&lt;START&gt;_&lt;END&gt;.csv</code> with compact UTC stamps.</li>
+        <li data-i18n="help.data.li1">Source: MT5 tab-separated export <code>USTEC_M1_202508010000_202603031408.csv</code> (2025-08-01 → 2026-03-03, ~205k 1m candles).</li>
+        <li data-i18n="help.data.li2">All timestamps are UTC; <code>volume</code> is tick volume (<code>TICKVOL</code>), summed when resampled.</li>
+        <li data-i18n="help.data.li3">CSV header: <code>time,open,high,low,close,tickvol</code>; export filenames follow <code>&lt;SYMBOL&gt;_&lt;TIMEFRAME&gt;_&lt;START&gt;_&lt;END&gt;.csv</code> with compact UTC stamps.</li>
       </ul>
 
-      <a class="back" href="/">← back to the chart</a>
+      <a class="back" href="/" data-i18n="help.back">← back to the chart</a>
     </main>
   </body>
 </html>
