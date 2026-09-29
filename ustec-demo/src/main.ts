@@ -19,6 +19,7 @@ import { computeSonicRWavePatterns, type WavePattern } from './sonic-r-wave';
 import { computeSonicREntries, type SonicRSignal } from './sonic-r-entry';
 import type { OhlcvBar } from './sonic-r-order-blocks';
 import { SelectionTool } from './selection-tool';
+import { createRangeQueryApi } from './range-query-api';
 // ============================================
 // 1. CREATE THE CHART (from getting-started ideas)
 // ============================================
@@ -258,25 +259,44 @@ async function main() {
   let lastReplayRenderedStartIndex = 0;
   let lastReplayRenderedVisibleCount = 0;
 
-  // Effective dataset for the data selector tool: all bars of the active
-  // timeframe, truncated at the replay cursor when replaying (WYSIWYG).
-  function effectiveDataset(): OhlcvBar[] {
-    const all = resampledByInterval.get(currentIntervalSeconds);
+  // Effective dataset for a timeframe: all its bars, truncated at the replay
+  // cursor when replaying (WYSIWYG). Backs the data selector tool and the
+  // window.ustec range-query API.
+  function datasetFor(intervalSeconds: number): OhlcvBar[] {
+    const all = resampledByInterval.get(intervalSeconds);
     if (!all || all.length === 0) return [];
     if (!isReplayMode) return all;
     return all.slice(0, findVisibleCount(all, getReplayCurrentTime()));
   }
 
+  function effectiveDataset(): OhlcvBar[] {
+    return datasetFor(currentIntervalSeconds);
+  }
+
+  const SYMBOL = 'USTEC';
   const selectionTool = new SelectionTool({
     chart,
     series: candleSeries,
     container: chartContainer!,
-    symbol: 'USTEC',
+    symbol: SYMBOL,
     getDataset: effectiveDataset,
     getTimeframeLabel: () =>
       timeframeSelect.options[timeframeSelect.selectedIndex]?.textContent ?? '',
     isInterceptBlocked: () => isSpacePanActive,
     onStateChange: () => applySpacePanCursor(),
+  });
+
+  // Programmatic range-query API (see DATA_EXPORT.md): same replay-aware
+  // slicing as the selector tool, callable from the console or scripts.
+  window.ustec = createRangeQueryApi({
+    symbol: SYMBOL,
+    timeframes: Array.from(timeframeSelect.options).map((opt) => ({
+      label: opt.textContent ?? '',
+      seconds: Number(opt.value),
+    })),
+    getDataset: datasetFor,
+    getActiveIntervalSeconds: () => currentIntervalSeconds,
+    getSelection: () => selectionTool.getRange(),
   });
 
   function getReplayCurrentTime(): UTCTimestamp {
@@ -800,6 +820,9 @@ async function main() {
     applySpacePanCursor();
   });
 
+  console.log(
+    'Range query API ready: window.ustec.queryRange(start, end[, { timeframe }]) — see DATA_EXPORT.md'
+  );
   console.log(`Loaded ${data1m.length} 1m candles`);
 }
 

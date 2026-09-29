@@ -11,7 +11,8 @@ A floating action popup anchors near the release point (TradingView-like).
 | `src/selection-tool.ts` | Tool state machine: arm/disarm, drag lifecycle, edge snapping, floating popup with Export/Copy/Clear. |
 | `src/selection-band-primitive.ts` | Pane primitive drawing the full-height selection band (live preview + final range). |
 | `src/data-export.ts` | CSV/Markdown builders, filename rule, download and clipboard helpers. |
-| `src/main.ts` | Toolbar button, Escape key handling, `effectiveDataset()` (replay-aware data source), refresh hooks on renders. |
+| `src/bar-range.ts` | Shared binary-search helpers: bound lookups + inclusive `[start, end]` slicing over ascending bars. |
+| `src/range-query-api.ts` | `window.ustec` programmatic range-query API (same WYSIWYG slicing as the UI tool). |
 
 ## How to use
 
@@ -62,3 +63,41 @@ A titled table ready to paste into notes/PRs:
 |---|---|---|---|---|---|
 | 2025-09-01 09:30:00 | 25433.5 | 25440.0 | 25430.1 | 25438.2 | 812 |
 ```
+
+## Programmatic API (`window.ustec`)
+
+The same replay-aware slicing the UI performs is callable from the console or
+scripts (via `src/range-query-api.ts`, wired in `main.ts`):
+
+```js
+// 'YYYY-MM-DD HH:MM[:SS]' is UTC (source CSV convention)
+const r = window.ustec.queryRange('2025-09-01 09:30', '2025-09-05 16:00');
+// cap the rows returned (taken from the start of the range)
+window.ustec.queryRange('2025-09-01', '2025-10-01', { timeframe: '1H', limit: 10 });
+r.barCount;     // 412
+r.from; r.to;   // actual first/last bar times, 'YYYY-MM-DD HH:MM:SS' UTC
+r.available;    // full extent of the queried dataset (UTC seconds)
+r.bars[0];      // { time, open, high, low, close, volume }
+
+// query a timeframe other than the active one (label or seconds)
+window.ustec.queryRange('2025-09-01', '2025-10-01', { timeframe: '1H' });
+window.ustec.queryRange(1756724400, 1756983600, { timeframe: 300 });
+
+// re-query whatever is currently selected on the chart (null when none)
+window.ustec.getSelection();
+
+// serialize exactly like the UI's Export CSV payload
+window.ustec.toCsv(r);
+```
+
+Time arguments accept UTC epoch seconds, `'YYYY-MM-DD[ T]HH:MM[:SS]'` (UTC,
+the source CSV convention), date-only `'YYYY-MM-DD'` (UTC midnight), or ISO
+8601 with an explicit timezone (`…Z` / `…±HH:MM`). Other ISO forms without a
+timezone are rejected — they would silently parse as local time. `end` before
+`start` is swapped. `{ limit }` caps rows taken from the start of the range
+(positive integer; anything else throws). Unknown timeframes and invalid
+times throw with the accepted formats.
+
+In replay mode results are truncated at the replay cursor, exactly like the
+UI exports; querying a non-active timeframe returns that timeframe's bars
+truncated at the same replay time.

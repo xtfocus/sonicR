@@ -10,6 +10,7 @@
 import type { IChartApi, ISeriesApi, UTCTimestamp } from 'lightweight-charts';
 import { SelectionBandPrimitive, type SelectionRange } from './selection-band-primitive';
 import type { OhlcvBar } from './sonic-r-order-blocks';
+import { nearestIndexByTime, sliceBarsByTimeRange } from './bar-range';
 import {
   barsToCsv,
   barsToMarkdown,
@@ -36,44 +37,6 @@ export interface SelectionToolDeps {
 
 /** Below this horizontal movement a release counts as a click, not a drag. */
 const DRAG_MIN_PX = 4;
-
-/** First index in `bars` with time >= target. */
-function lowerBoundByTime(bars: OhlcvBar[], target: number): number {
-  let lo = 0;
-  let hi = bars.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if ((bars[mid]!.time as number) < target) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-}
-
-/** First index in `bars` with time > target. */
-function upperBoundByTime(bars: OhlcvBar[], target: number): number {
-  let lo = 0;
-  let hi = bars.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if ((bars[mid]!.time as number) <= target) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-}
-
-/** Index of the bar whose time is closest to `target` (bars ascending). */
-function nearestIndexByTime(bars: OhlcvBar[], target: number): number {
-  const upper = upperBoundByTime(bars, target);
-  const before = bars[upper - 1];
-  const after = bars[upper];
-  if (before && after) {
-    return Math.abs((before.time as number) - target) <=
-      Math.abs((after.time as number) - target)
-      ? upper - 1
-      : upper;
-  }
-  return before ? upper - 1 : 0;
-}
 
 export class SelectionTool {
   private readonly _band = new SelectionBandPrimitive();
@@ -236,7 +199,7 @@ export class SelectionTool {
 
   private _updatePopupSummary(): void {
     if (!this._popupSummary || !this._popupRange || !this._range) return;
-    const bars = this._selectedBars();
+    const bars = this.getSelectedBars();
     const tf = this._deps.getTimeframeLabel();
     const start = formatBarTime(this._range.start as number).slice(0, 16);
     const end = formatBarTime(this._range.end as number).slice(0, 16);
@@ -244,12 +207,19 @@ export class SelectionTool {
     this._popupRange.textContent = `${start} → ${end} UTC`;
   }
 
-  private _selectedBars(): OhlcvBar[] {
+  /** Current selection range (bar-time bounds), or null when none. */
+  getRange(): SelectionRange | null {
+    return this._range;
+  }
+
+  /** Bars of the current selection (edges inclusive), replay-aware. */
+  getSelectedBars(): OhlcvBar[] {
     if (!this._range) return [];
-    const dataset = this._deps.getDataset();
-    const from = lowerBoundByTime(dataset, this._range.start as number);
-    const to = upperBoundByTime(dataset, this._range.end as number);
-    return dataset.slice(from, to);
+    return sliceBarsByTimeRange(
+      this._deps.getDataset(),
+      this._range.start as number,
+      this._range.end as number
+    );
   }
 
   private _buildPopup(): HTMLDivElement {
@@ -306,7 +276,7 @@ export class SelectionTool {
 
     buttons.appendChild(
       makeButton('Export CSV', () => {
-        const bars = this._selectedBars();
+        const bars = this.getSelectedBars();
         if (bars.length === 0 || !this._range) return;
         downloadTextFile(
           buildCsvFilename(
@@ -321,7 +291,7 @@ export class SelectionTool {
 
     buttons.appendChild(
       makeButton('Copy Markdown', async (btn) => {
-        const bars = this._selectedBars();
+        const bars = this.getSelectedBars();
         if (bars.length === 0 || !this._range) return;
         const start = formatBarTime(this._range.start as number).slice(0, 16);
         const end = formatBarTime(this._range.end as number).slice(0, 16);
