@@ -39,11 +39,12 @@ import type { UTCTimestamp } from 'lightweight-charts';
 import { parseFlagArgs } from './parse-args';
 import { describeAnalyzeFunctions, getAnalyzeFunction, runAnalyze } from '../analysis/registry';
 import { buildChart } from './chart-core';
-import { caseFilePath, listCases } from './artifacts';
+import { caseFilePath, listCases, CASES_ROOT } from './artifacts';
 import { persistChartOutcome } from './case-writer';
 import { renderPng } from '../viz/png';
 import { renderSvg } from '../viz/svg';
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ChartSpec } from '../viz/types';
 
 const { api, meta } = loadApiWithMeta();
@@ -221,6 +222,42 @@ function handleChart(url: URL, res: ServerResponse): void {
   res.end(rendered.png);
 }
 
+/**
+ * GET /cases/<case>/<sub>/<file> — static mount of the cases directory,
+ * so reports open in the browser (relative chart <img> references
+ * resolve through the same mount). Traversal-safe: every path segment
+ * must be a plain filesystem name.
+ */
+function handleCaseFile(url: URL, res: ServerResponse): void {
+  // cases, <case>, <sub>, <file>
+  const parts = url.pathname.split('/').filter(Boolean);
+  if (parts.length < 3 || parts[0] !== 'cases' || !parts.slice(1).every((p) => /^[\w.-]+$/.test(p) && p !== '..')) {
+    sendJson(res, 404, { error: 'no such case file' });
+    return;
+  }
+  const path = join(CASES_ROOT, ...parts.slice(1));
+  const body = readFileSync(path);
+  const ext = path.split('.').pop() ?? '';
+  const contentType =
+    ext === 'html'
+      ? 'text/html; charset=utf-8'
+      : ext === 'js'
+        ? 'text/javascript; charset=utf-8'
+        : ext === 'json'
+          ? 'application/json; charset=utf-8'
+          : ext === 'csv'
+            ? 'text/csv; charset=utf-8'
+            : ext === 'svg'
+              ? 'image/svg+xml'
+              : ext === 'png'
+                ? 'image/png'
+                : ext === 'css'
+                  ? 'text/css; charset=utf-8'
+                  : 'application/octet-stream';
+  res.writeHead(200, { 'content-type': `${contentType}` });
+  res.end(body);
+}
+
 function handleArtifactFile(url: URL, res: ServerResponse): void {
   // /api/artifacts/<case>/<sub>/<file>  where sub ∈ charts|data|analysis|report
   const parts = url.pathname.split('/').filter(Boolean); // api, artifacts, case, sub, file
@@ -336,6 +373,23 @@ createServer((req: IncomingMessage, res: ServerResponse) => {
   }
   if (req.method === 'GET' && url.pathname.startsWith('/api/artifacts/')) {
     handleArtifactFile(url, res);
+    return;
+  }
+  if (req.method === 'GET' && url.pathname.startsWith('/api/report/')) {
+    // Convenience: /api/report/<case> → the case's report page.
+    const caseId = url.pathname.slice('/api/report/'.length).replace(/[/\\]/g, '');
+    if (caseId !== '') {
+      res.writeHead(302, { location: `/cases/${caseId}/report/index.html` });
+      res.end();
+      return;
+    }
+  }
+  if (req.method === 'GET' && url.pathname.startsWith('/cases/')) {
+    try {
+      handleCaseFile(url, res);
+    } catch {
+      sendJson(res, 404, { error: 'no such case file' });
+    }
     return;
   }
   sendJson(res, 404, {
