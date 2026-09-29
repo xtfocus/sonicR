@@ -20,6 +20,12 @@ import { computeSonicREntries, type SonicRSignal } from './sonic-r-entry';
 import type { OhlcvBar } from './sonic-r-order-blocks';
 import { SelectionTool } from './selection-tool';
 import { createRangeQueryApi } from './range-query-api';
+import {
+  parseUstecCsv,
+  resampleOhlcSkipEmptyBuckets,
+  TIMEFRAMES,
+  USTEC_CSV_FILENAME,
+} from './ustec-data';
 // ============================================
 // 1. CREATE THE CHART (from getting-started ideas)
 // ============================================
@@ -70,92 +76,13 @@ const candleSeries = chart.addSeries(CandlestickSeries, {
 });
 
 // ============================================
-// 3. PARSE USTEC CSV (tab-separated OHLC)
-// Columns: <DATE> <TIME> <OPEN> <HIGH> <LOW> <CLOSE> <TICKVOL> <VOL> <SPREAD>
-// Date format: 2025.08.01, Time: 00:00:00
+// 3. LOAD USTEC CSV (parser + resampler: ustec-data.ts)
 // ============================================
 
-function parseDateToUtcSeconds(dateStr: string, timeStr: string): number {
-  // dateStr = "2025.08.01" -> y, m, d
-  const [y, m, d] = dateStr.split('.').map(Number);
-  const [hh, mm, ss] = timeStr.split(':').map(Number);
-  const ms = Date.UTC(y, m - 1, d, hh, mm, ss);
-  return Math.floor(ms / 1000) as UTCTimestamp;
-}
-
 async function loadUstecCsv(): Promise<OhlcvBar[]> {
-  const url = '/data/USTEC_M1_202508010000_202603031408.csv';
-  const response = await fetch(url);
+  const response = await fetch(`/data/${USTEC_CSV_FILENAME}`);
   if (!response.ok) throw new Error(`Failed to load CSV: ${response.statusText}`);
-  const text = await response.text();
-  const lines = text.trim().split('\n');
-  if (lines.length < 2) return [];
-
-  const rows: OhlcvBar[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split('\t');
-    if (cols.length < 6) continue;
-    const [date, time, open, high, low, close] = cols;
-    const tickVol = cols[6] != null && cols[6] !== '' ? parseFloat(cols[6]) : 0;
-    rows.push({
-      time: parseDateToUtcSeconds(date, time) as UTCTimestamp,
-      open: parseFloat(open),
-      high: parseFloat(high),
-      low: parseFloat(low),
-      close: parseFloat(close),
-      volume: Number.isFinite(tickVol) ? tickVol : 0,
-    });
-  }
-  return rows;
-}
-
-function resampleOhlcSkipEmptyBuckets(
-  data1m: OhlcvBar[],
-  intervalSeconds: number
-): OhlcvBar[] {
-  // lightweight-charts expects `time` to be increasing. We keep only buckets that
-  // have at least one underlying 1m candle (skip empty buckets).
-  if (intervalSeconds <= 60) return data1m;
-
-  const buckets = new Map<number, OhlcvBar[]>();
-
-  for (const c of data1m) {
-    const t = c.time as number;
-    const bucketStart = Math.floor(t / intervalSeconds) * intervalSeconds;
-    const arr = buckets.get(bucketStart);
-    if (arr) arr.push(c);
-    else buckets.set(bucketStart, [c]);
-  }
-
-  const bucketStarts = Array.from(buckets.keys()).sort((a, b) => a - b);
-  const result: OhlcvBar[] = [];
-
-  for (const bucketStart of bucketStarts) {
-    const arr = buckets.get(bucketStart)!;
-    // assumes input is ordered; if it's not, you'd need to sort `arr` by time here.
-    const open = arr[0].open!;
-    const close = arr[arr.length - 1].close!;
-    let high = -Infinity;
-    let low = Infinity;
-    let volume = 0;
-
-    for (const x of arr) {
-      high = Math.max(high, x.high!);
-      low = Math.min(low, x.low!);
-      volume += x.volume ?? 0;
-    }
-
-    result.push({
-      time: bucketStart as UTCTimestamp,
-      open,
-      high,
-      low,
-      close,
-      volume,
-    });
-  }
-
-  return result;
+  return parseUstecCsv(await response.text());
 }
 
 // ============================================
@@ -198,8 +125,18 @@ async function main() {
   const replayJumpDatetime = replayJumpDatetimeInput;
   const replayControls = replayControlsWrap;
 
+  // Timeframe options come from the shared catalogue (ustec-data.ts).
+  timeframeSelect.innerHTML = '';
+  for (const tf of TIMEFRAMES) {
+    const opt = document.createElement('option');
+    opt.value = String(tf.seconds);
+    opt.textContent = tf.label;
+    if (tf.seconds === 300) opt.selected = true;
+    timeframeSelect.appendChild(opt);
+  }
+
   // Cache resampled candles so switching timeframes is instant.
-  const timeframesSeconds = [60, 300, 900, 1800, 3600, 86400];
+  const timeframesSeconds = TIMEFRAMES.map((tf) => tf.seconds);
   const resampledByInterval = new Map<number, OhlcvBar[]>();
   for (const seconds of timeframesSeconds) {
     resampledByInterval.set(
@@ -290,10 +227,7 @@ async function main() {
   // slicing as the selector tool, callable from the console or scripts.
   window.ustec = createRangeQueryApi({
     symbol: SYMBOL,
-    timeframes: Array.from(timeframeSelect.options).map((opt) => ({
-      label: opt.textContent ?? '',
-      seconds: Number(opt.value),
-    })),
+    timeframes: TIMEFRAMES,
     getDataset: datasetFor,
     getActiveIntervalSeconds: () => currentIntervalSeconds,
     getSelection: () => selectionTool.getRange(),

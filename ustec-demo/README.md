@@ -12,6 +12,15 @@ npm run dev
 
 Open the URL shown (e.g. http://localhost:5173). The chart loads the CSV from `public/data/` and displays candlesticks.
 
+## Query data without the browser
+
+```bash
+npm run serve-api   # HTTP: curl 'http://localhost:5200/api/range?start=2025-09-01&end=2025-09-02&limit=10'
+npm run query -- --start 2025-09-01 --end 2025-09-02 --limit 10 --format csv
+```
+
+Same semantics as `window.ustec` on the page (see `help.html` / `DATA_EXPORT.md`); no replay truncation applies.
+
 ## Data
 
 - CSV is tab-separated: `<DATE>`, `<TIME>`, `<OPEN>`, `<HIGH>`, `<LOW>`, `<CLOSE>`, …

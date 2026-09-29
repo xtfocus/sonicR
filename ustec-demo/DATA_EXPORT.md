@@ -101,3 +101,26 @@ times throw with the accepted formats.
 In replay mode results are truncated at the replay cursor, exactly like the
 UI exports; querying a non-active timeframe returns that timeframe's bars
 truncated at the same replay time.
+
+## HTTP API and CLI (Node)
+
+The same query core (`src/ustec-data.ts` + `src/range-query-api.ts`) powers a
+local HTTP endpoint and a CLI, runnable from `ustec-demo/`. Server-side there
+is no replay cursor — queries always see the full dataset; the default
+timeframe when omitted is `5m`.
+
+```bash
+# HTTP endpoint (default port 5200, --port to change)
+npm run serve-api
+curl 'http://localhost:5200/api/range?start=2025-09-01&end=2025-09-02&limit=10'
+curl 'http://localhost:5200/api/range?start=2025-09-01&end=2025-09-02&timeframe=1H&format=csv'
+
+# CLI
+npm run query -- --start '2025-09-01 09:30' --end '2025-09-05 16:00' --limit 10 --format csv
+```
+
+HTTP: query params mirror the JS options (`start`, `end`, `timeframe`,
+`limit`, `format=json|csv`); errors return 400 with `{ error }`, unknown
+paths 404; CSV responses reuse the UI export filename in
+`Content-Disposition`. CLI: same flags (`--help` for usage); errors print to
+stderr with exit code 1.

@@ -134,6 +134,7 @@
         <a href="#indicators">Indicators</a>
         <a href="#select-range">Select Range</a>
         <a href="#api">window.ustec API</a>
+        <a href="#terminal">Terminal</a>
         <a href="#data">Data</a>
       </nav>
 
@@ -277,6 +278,25 @@ window.ustec.getSelection();
 
 <span class="cmt">// same CSV the Export button downloads</span>
 console.log(window.ustec.toCsv(r));</code></pre>
+
+      <h3 id="terminal">From the terminal — HTTP API &amp; CLI</h3>
+      <p>
+        The same query core runs outside the browser (from
+        <code>ustec-demo/</code>). Server-side there is no replay cursor:
+        queries always see the full dataset. Default timeframe when omitted
+        is <code>5m</code>.
+      </p>
+      <pre><code><span class="cmt"># HTTP endpoint (npm run serve-api, default port 5200; --port to change)</span>
+curl 'http://localhost:5200/api/range?start=2025-09-01&amp;end=2025-09-02&amp;limit=10'
+curl 'http://localhost:5200/api/range?start=2025-09-01&amp;end=2025-09-02&amp;timeframe=1H&amp;format=csv'
+
+<span class="cmt"># CLI (json default; --format csv for pipeable rows)</span>
+npm run query -- --start '2025-09-01 09:30' --end '2025-09-05 16:00' --limit 10 --format csv</code></pre>
+      <p class="muted">
+        HTTP errors return 400 with <code>{ error }</code>; unknown paths 404.
+        CSV responses carry the UI's export filename in
+        <code>Content-Disposition</code>.
+      </p>
 
       <h2 id="data">Data &amp; conventions</h2>
       <ul>
