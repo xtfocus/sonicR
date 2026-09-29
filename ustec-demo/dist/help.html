@@ -140,8 +140,8 @@
         margin-top: 0;
       }
     </style>
-    <script type="module" crossorigin src="/assets/help-I4xwgHQy.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/i18n-B2XqYbNA.js">
+    <script type="module" crossorigin src="/assets/help-AX6d7yKg.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/i18n-BcRjGEb_.js">
   </head>
   <body>
     <main>
@@ -170,6 +170,7 @@
         <a href="#select-range" data-i18n="nav.selectRange">Select Range</a>
         <a href="#api" data-i18n="nav.api">window.ustec API</a>
         <a href="#functions" data-i18n="nav.functions">Analysis functions</a>
+        <a href="#charts" data-i18n="nav.charts">Charts &amp; reports</a>
         <a href="#terminal" data-i18n="nav.terminal">Terminal</a>
         <a href="#data" data-i18n="nav.data">Data</a>
       </nav>
@@ -340,6 +341,32 @@ npm run analyze -- --list</code></pre>
       <div id="analysis-functions">
         <p class="muted">Loading function catalogue…</p>
       </div>
+
+      <h2 id="charts" data-i18n="help.charts.h">Charts &amp; reports</h2>
+      <p data-i18n="help.charts.p1">
+        Every analysis function has a chart twin: server-rendered PNGs with a
+        sidecar manifest, saved under <code>reports/&lt;session&gt;/</code> for
+        LLM report assembly.
+      </p>
+      <pre><code><span class="cmt"># CLI: analysis + render + save (PNG + sidecar JSON)</span>
+npm run chart -- --fn signal --start 2025-08-01 --end 2025-09-01 --timeframe 1H --ltf-timeframe 5m --minRR 1.5 --session aug-long
+
+<span class="cmt"># HTTP: PNG, SVG, spec, or save+sidecar JSON — and the artifact index</span>
+curl 'http://localhost:5200/api/chart?fn=zones-merged&amp;start=2025-09-01&amp;end=2025-10-01&amp;timeframe=1H' -o zones.png
+curl 'http://localhost:5200/api/artifacts'
+
+<span class="cmt"># freeform annotation (repeatable; '@'-separated)</span>
+npm run chart -- --fn structure --start 2025-09-01 --end 2025-10-01 --timeframe 1H \
+    --annotate 'level@24600@watch' --annotate 'marker@2025-09-10@cross@event'</code></pre>
+      <p class="muted" data-i18n="help.charts.p2">
+        Chart types: <code>structure</code> (zigzag + BOS/CHoCH),
+        <code>zones-merged</code> (lifecycle-styled zones), <code>liquidity</code>,
+        <code>signal</code> (entry/stop/target bracket + R:R), plus
+        <code>pois</code>, <code>equilibrium</code>, <code>bias-timeline</code>,
+        <code>mtf-stack</code>. The <b>Capture PNG</b> button on the chart page
+        snapshots the live WYSIWYG view. See <code>VISUALIZATION.md</code> for the
+        full spec, annotation grammar and the LLM assembly contract.
+      </p>
 
       <h3 id="terminal" data-i18n="help.terminal.h">From the terminal — HTTP API &amp; CLI</h3>
       <p data-i18n="help.terminal.p">

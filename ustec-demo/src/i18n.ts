@@ -43,6 +43,11 @@ const en: Dictionary = {
   'select.range': 'Select Range',
   'select.selecting': 'Selecting…',
   'app.capture': 'Capture PNG',
+  'report.title': 'USTEC Analysis Report',
+  'report.generated': 'generated from analysis artifacts',
+  'report.summary': 'Summary',
+  'report.summaryPlaceholder': '(Assembled by the analysis pipeline: bias verdict → structure → zones → signals. Replace this text and add figures below.)',
+  'report.charts': 'Charts',
   'indicators.waves': 'Show waves/legs',
   'indicators.orderBlocks': 'Order blocks (LuxAlgo OB)',
   'indicators.nyMacro': 'NY Macro Times',
@@ -59,6 +64,7 @@ const en: Dictionary = {
   'nav.selectRange': 'Select Range',
   'nav.api': 'window.ustec API',
   'nav.functions': 'Analysis functions',
+  'nav.charts': 'Charts & reports',
   'nav.terminal': 'Terminal',
   'nav.data': 'Data',
 
@@ -160,6 +166,13 @@ const en: Dictionary = {
   'help.functions.description': 'Description',
   'help.functions.needsLtf': 'also accepts ltfTimeframe (trigger series)',
 
+  // ---- help: charts & reports ----
+  'help.charts.h': 'Charts & reports',
+  'help.charts.p1':
+    'Every analysis function has a chart twin: server-rendered PNGs with a sidecar manifest, saved under reports/<session>/ for LLM report assembly.',
+  'help.charts.p2':
+    'Chart types: structure (zigzag + BOS/CHoCH), zones-merged (lifecycle-styled zones), liquidity, signal (entry/stop/target bracket + R:R), plus pois, equilibrium, bias-timeline, mtf-stack. The Capture PNG button on the chart page snapshots the live WYSIWYG view. See VISUALIZATION.md for the full spec, annotation grammar and the LLM assembly contract.',
+
   // ---- help: data ----
   'help.data.h': 'Data & conventions',
   'help.data.li1':
@@ -184,6 +197,11 @@ const vi: Dictionary = {
   'select.range': 'Chọn vùng',
   'select.selecting': 'Đang chọn…',
   'app.capture': 'Chụp PNG',
+  'report.title': 'Báo cáo phân tích USTEC',
+  'report.generated': 'được tạo từ các artifact phân tích',
+  'report.summary': 'Tóm tắt',
+  'report.summaryPlaceholder': '(Được lắp ráp bởi pipeline phân tích: phán quyết bias → cấu trúc → vùng → tín hiệu. Thay văn bản này và thêm các hình bên dưới.)',
+  'report.charts': 'Biểu đồ',
   'indicators.waves': 'Hiện các chân sóng',
   'indicators.orderBlocks': 'Order blocks (LuxAlgo OB)',
   'indicators.nyMacro': 'Khung giờ Macro NY',
@@ -200,6 +218,7 @@ const vi: Dictionary = {
   'nav.selectRange': 'Chọn vùng',
   'nav.api': 'API window.ustec',
   'nav.functions': 'Hàm phân tích',
+  'nav.charts': 'Biểu đồ & báo cáo',
   'nav.terminal': 'Terminal',
   'nav.data': 'Dữ liệu',
 
@@ -299,6 +318,13 @@ const vi: Dictionary = {
   'help.functions.default': 'Mặc định',
   'help.functions.description': 'Mô tả',
   'help.functions.needsLtf': 'chấp nhận thêm ltfTimeframe (chuỗi khung trigger)',
+
+  // ---- trợ giúp: biểu đồ & báo cáo ----
+  'help.charts.h': 'Biểu đồ & báo cáo',
+  'help.charts.p1':
+    'Mỗi hàm phân tích đều có bản biểu đồ: PNG được render phía server kèm sidecar manifest, lưu dưới reports/<session>/ để LLM lắp ráp báo cáo.',
+  'help.charts.p2':
+    'Các loại biểu đồ: structure (zigzag + BOS/CHoCH), zones-merged (vùng theo trạng thái), liquidity, signal (khung entry/stop/target + R:R), cùng pois, equilibrium, bias-timeline, mtf-stack. Nút Chụp PNG trên trang biểu đồ chụp nhanh khung nhìn WYSIWYG hiện tại. Xem VISUALIZATION.md về spec đầy đủ, cú pháp annotation và hợp đồng lắp ráp cho LLM.',
 
   // ---- trợ giúp: dữ liệu ----
   'help.data.h': 'Dữ liệu & quy ước',

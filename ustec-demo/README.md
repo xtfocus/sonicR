@@ -34,6 +34,19 @@ Pure, point-in-time-safe structure / zone / signal functions over the OHLCV seri
 (Sonic R workflow as callable building blocks). Same registry drives the CLI, the
 HTTP API and the Help page. See `ANALYSIS_FUNCTIONS.md`.
 
+## Charts & reports
+
+```bash
+npm run chart -- --fn signal --start 2025-08-01 --end 2025-09-01 --timeframe 1H \
+    --ltf-timeframe 5m --minRR 1.5 --session aug-long    # PNG + sidecar → reports/aug-long/
+npm run chart -- --fn structure --start 2025-09-01 --end 2025-10-01 --timeframe 1H \
+    --annotate 'level@24600@watch'                       # freeform annotation
+curl 'http://localhost:5200/api/chart?fn=zones-merged&start=2025-09-01&end=2025-10-01&timeframe=1H' -o zones.png
+```
+
+Deterministic server-side renders with sidecar manifests for LLM report
+assembly (`report-template.html`). See `VISUALIZATION.md`.
+
 ## Language support
 
 The chart page and Help page are bilingual (English / Tiếng Việt). Use the

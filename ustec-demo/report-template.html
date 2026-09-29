@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title data-i18n="report.title">USTEC Analysis Report</title>
+    <style>
+      :root {
+        --bg: #131722;
+        --panel: #0f1520;
+        --border: #2a3551;
+        --text: #d1d4dc;
+        --muted: #8a92a6;
+        --accent: #4c6ef5;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        line-height: 1.6;
+        padding: 40px 20px 80px;
+      }
+      main {
+        max-width: 1060px;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 30px;
+        margin-bottom: 4px;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .meta {
+        font-size: 14px;
+        margin-bottom: 28px;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 14px;
+      }
+      figure {
+        margin: 28px 0;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px;
+      }
+      figure img {
+        width: 100%;
+        height: auto;
+        border-radius: 6px;
+        display: block;
+      }
+      figcaption {
+        margin-top: 10px;
+        font-size: 14px;
+        color: var(--text);
+      }
+      .caption-note {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 2px;
+      }
+      .lang-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 14px 0 0;
+      }
+      .lang-row select {
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 4px 10px;
+      }
+      code {
+        background: #1a2233;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 1px 5px;
+        font-size: 0.9em;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1 data-i18n="report.title">USTEC Analysis Report</h1>
+      <div class="lang-row">
+        <label for="lang-select"><span data-i18n="app.lang">Language</span>:</label>
+        <select id="lang-select">
+          <option value="en">English</option>
+          <option value="vi">Tiếng Việt</option>
+        </select>
+      </div>
+      <p class="meta muted">
+        <span class="report-symbol">USTEC</span> ·
+        <span class="report-range">—</span> ·
+        <span data-i18n="report.generated">generated from analysis artifacts</span>
+      </p>
+
+      <!-- LLM: replace #report-summary with your narrative. Figures:
+           1. Pick PNGs from the artifacts session directory
+              (reports/<session>/), or call GET /api/chart with save=1.
+           2. Copy the img src + the sidecar's caption/altText into each
+              <figure>. The sidecar JSON is the ground truth — quote it,
+              never invent numbers. -->
+      <h2 data-i18n="report.summary">Summary</h2>
+      <p id="report-summary" data-i18n="report.summaryPlaceholder">
+        (Assembled by the analysis pipeline: bias verdict → structure →
+        zones → signals. Replace this text and add figures below.)
+      </p>
+
+      <h2 data-i18n="report.charts">Charts</h2>
+
+      <!-- Figure template — one per chart artifact:
+      <figure>
+        <img src="signal_1H_01.png" alt="USTEC 1H Aug 2025 — long-only signal" />
+        <figcaption>
+          USTEC 1H 2025-08-20 → 2025-09-01: HH_HL long only; OB POI 23177–23212;
+          entry 23212, stop 23165, R:R 1.96, 7 targets.
+          <div class="caption-note">artifact: signal_1H_01 · sha256 … · fn=signal minRR=1.5</div>
+        </figcaption>
+      </figure>
+      -->
+    </main>
+    <script type="module" src="/src/help-main.ts"></script>
+  </body>
+</html>
