@@ -197,9 +197,18 @@ Every response carries `access-control-allow-origin: *` (local tool).
   - `E2ETest3` (8m34s): reused a pre-existing case after verifying
     sha-identity (deterministic), then assembled a correct narrative —
     self-corrected a March-verdict drafting error.
-  - `E2ETest4` (in flight at handoff, spawned with empty `cases/`):
-    full from-scratch regeneration — **check `ustec-demo/cases/` for its
-    output** and record its verdict in this doc before continuing.
+  - `E2ETest4` (12m22s, from scratch with empty `cases/`): generated the
+    full case (5 charts + pinned data + analysis) and — because the
+    full Jan–Mar window legitimately yielded 0 setups (all 5 POIs
+    consumed over 2 months) — followed the workflow skill's "narrow the
+    window" guidance and added a Feb sub-window signal chart with **2
+    real qualifying setups: FVG 24979–24991, entry 24979, stop 25004,
+    R:R 2.00, 8 targets; and a second at R:R 7.95**. Polished the report
+    narrative and left 6 figures in
+    `cases/jan-mar-2026/report/index.html`.
+    **Takeaway**: window length is a first-class choice — a full
+    multi-month window consumes POIs; narrow to the trending sub-window
+    to surface setups (see sharp edge 7).
 - **UI verified in headless Chromium**: chart toolbar (Capture PNG,
   Cases), cases list page, bilingual toggles, report page with 5 inline
   figures at full resolution, digest surviving i18n re-render.
