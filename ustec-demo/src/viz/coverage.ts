@@ -98,21 +98,38 @@ export function equilibriumChart(
  * (short_only), gray (stand_aside). Answers "when was this market
  * tradeable?" at a glance. Windows are (label, bars) slices of one
  * continuous series (e.g. months).
+ *
+ * Returns the per-window verdicts alongside the spec: the bands encode
+ * them only as color + pixel labels, and a narrative writer that trusts
+ * JSON over pixels would otherwise have nothing to quote — the exact gap
+ * that reads as "all windows gray" in generated reports.
  */
+export type BiasTimelineResult = {
+  spec: ChartSpec;
+  windows: Array<{ label: string; structure: string; bias: string; pivotCount: number }>;
+};
+
 export function biasTimeline(
   windows: Array<{ label: string; bars: OhlcvBar[] }>,
   symbol: string,
   opts: { title?: string; layout?: ChartSpec['layout']; k?: number } = {}
-): ChartSpec {
+): BiasTimelineResult {
   const k = opts.k ?? 5;
   const bands: Overlay[] = [];
   const bars: OhlcvBar[] = [];
+  const verdicts: BiasTimelineResult['windows'] = [];
   windows.forEach((win, i) => {
     if (win.bars.length === 0) return;
     const fromTime = win.bars[0]!.time;
     const next = windows[i + 1]?.bars[0];
     const toTime = next != null ? next.time : undefined; // omit → right edge
     const bias = marketBias(win.bars, k);
+    verdicts.push({
+      label: win.label,
+      structure: bias.structure,
+      bias: bias.bias,
+      pivotCount: bias.pivotCount,
+    });
     const color =
       bias.bias === 'long_only'
         ? 'rgba(38,166,154,0.16)'
@@ -128,10 +145,10 @@ export function biasTimeline(
     });
     bars.push(...win.bars);
   });
-  return {
+  const spec: ChartSpec = {
     meta: {
       title: opts.title ?? `${symbol} — bias timeline (rolling windows)`,
-      subtitle: `${windows.length} windows · k=${k} · teal long · red short · gray range`,
+      subtitle: `${windows.length} windows (${verdicts.map((v) => `${v.label} ${v.structure}`).join(', ')}) · k=${k} · teal long · red short · gray range`,
       symbol,
       timeframe: 'windows',
       from: bars[0]?.time ?? 0,
@@ -143,6 +160,7 @@ export function biasTimeline(
     overlays: bands,
     layout: { hideLegend: true, ...opts.layout },
   };
+  return { spec, windows: verdicts };
 }
 
 /**

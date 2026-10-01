@@ -126,11 +126,12 @@ npm run report -- --start 2025-08-01 --end 2025-09-01 \
 # → cases/aug-2025/report/{index.html, summary.json}
 ```
 
-`report/summary.json` is the facts an LLM quotes (`regime`, chart
-captions, range); the narrative step fills `report/index.html` from it
-+ the sidecars. `GET /api/meta` reports the dataset extent for
-range-resolution ("most recent window" anchors at `available.end` — the
-feed is historical, not live).
+`report/summary.json` is the facts an LLM quotes (`regime`, per-window
+verdicts in `windows`, chart captions, range); the narrative step fills
+`report/index.html` from it + the sidecars. Quote JSON, never pixels —
+every statable number must exist there first (`GET /api/meta` reports
+the dataset extent for range-resolution ("most recent window" anchors
+at `available.end` — the feed is historical, not live).
 
 ## Design rules
 

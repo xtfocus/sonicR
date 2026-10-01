@@ -128,6 +128,63 @@
       </figure>
       -->
     </main>
-    <script type="module" src="/src/help-main.ts"></script>
+    <script>
+      // Self-contained i18n for the static report page (works from any
+      // static host or file://). Chrome strings mirror `src/i18n.ts`
+      // (`report.*` / `app.lang` keys) — keep the two in sync.
+      (function () {
+        'use strict';
+        var KEY = 'ustec-lang';
+        var DICT = {
+          en: {
+            'report.title': 'USTEC Analysis Report',
+            'app.lang': 'Language',
+            'report.generated': 'generated from analysis artifacts',
+            'report.summary': 'Summary',
+            'report.charts': 'Charts',
+          },
+          vi: {
+            'report.title': 'Báo cáo phân tích USTEC',
+            'app.lang': 'Ngôn ngữ',
+            'report.generated': 'được tạo từ các artifact phân tích',
+            'report.summary': 'Tóm tắt',
+            'report.charts': 'Biểu đồ',
+          },
+        };
+        function initialLang() {
+          var q = new URLSearchParams(window.location.search).get('lang');
+          if (q === 'vi' || q === 'en') return q;
+          try {
+            var saved = window.localStorage.getItem(KEY);
+            if (saved === 'vi' || saved === 'en') return saved;
+          } catch (e) { /* storage unavailable */ }
+          return (navigator.language || '').toLowerCase().indexOf('vi') === 0 ? 'vi' : 'en';
+        }
+        var lang = initialLang();
+        function apply() {
+          var dict = DICT[lang];
+          var nodes = document.querySelectorAll('[data-i18n]');
+          for (var i = 0; i < nodes.length; i++) {
+            var key = nodes[i].getAttribute('data-i18n');
+            if (dict[key] != null) nodes[i].textContent = dict[key];
+          }
+          document.title = dict['report.title'];
+          document.documentElement.lang = lang;
+          var select = document.getElementById('lang-select');
+          if (select) select.value = lang;
+        }
+        var select = document.getElementById('lang-select');
+        if (select) {
+          select.addEventListener('change', function () {
+            lang = select.value === 'vi' ? 'vi' : 'en';
+            try {
+              window.localStorage.setItem(KEY, lang);
+            } catch (e) { /* storage unavailable */ }
+            apply();
+          });
+        }
+        apply();
+      })();
+    </script>
   </body>
 </html>

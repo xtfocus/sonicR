@@ -9,7 +9,15 @@
  */
 
 import type { RangeQueryApi } from '../range-query-api';
-import type { OhlcvBar } from '../analysis/types';
+import type {
+  BosEvent,
+  ChochEvent,
+  LiquidityLevel,
+  OhlcvBar,
+  Pivot,
+  Zone,
+} from '../analysis/types';
+import type { EntrySignalResult } from '../analysis/signal';
 import type { ChartSpec } from '../viz/types';
 import {
   liquidityChart,
@@ -23,6 +31,13 @@ import {
 export const CHART_FNS = ['structure', 'zones-merged', 'liquidity', 'signal'] as const;
 
 export type ChartFnId = (typeof CHART_FNS)[number];
+
+/** Raw analysis output snapshotted to `analysis/<fn>.json` for each fn. */
+export type ChartAnalysis =
+  | EntrySignalResult
+  | { structure: string; pivots: Pivot[]; bos: BosEvent[]; choch: ChochEvent[] }
+  | { zones: Zone[] }
+  | { levels: LiquidityLevel[] };
 
 export type ChartRequest = {
   fn: string;
@@ -38,8 +53,8 @@ export type ChartRequest = {
 
 export type ChartOutcome = {
   spec: ChartSpec;
-  /** Present for `signal` — quoted verbatim into the sidecar digest. */
-  signal?: SignalChartResult['analysis'];
+  /** The analysis the chart encodes — persisted verbatim as the snapshot. Custom `--spec` outcomes have none. */
+  analysis?: ChartAnalysis;
   caption: string;
   /** The exact bars the analysis ran on (for case data pinning). */
   bars: OhlcvBar[];
@@ -92,20 +107,20 @@ export function buildChart(api: RangeQueryApi, req: ChartRequest): ChartOutcome 
     });
     return {
       spec: result.spec,
-      signal: result.analysis,
+      analysis: result.analysis,
       caption: signalCaption(symbol, tfLabel, result),
       bars: htf.bars,
       ltfBars: ltf.bars,
     };
   }
 
-  const spec =
+  const result =
     fn === 'structure'
       ? structureChart(htf.bars, symbol, tfLabel, { k, title: req.title, layout: req.layout })
       : fn === 'zones-merged'
         ? zonesChart(htf.bars, symbol, tfLabel, { k, title: req.title, layout: req.layout })
         : liquidityChart(htf.bars, symbol, tfLabel, { k, title: req.title, layout: req.layout });
-  return { spec, caption: `${spec.meta.title} — ${spec.meta.subtitle}`, bars: htf.bars };
+  return { spec: result.spec, analysis: result.analysis, caption: `${result.spec.meta.title} — ${result.spec.meta.subtitle}`, bars: htf.bars };
 }
 
 /** One-sentence verdict for the money chart, quoting exact signal fields. */

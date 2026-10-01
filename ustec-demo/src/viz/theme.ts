@@ -95,7 +95,8 @@ const ZONE_BASE: Record<VizDir, { hue: string }> = {
  * - `fresh`    — solid fill, full presence
  * - `touched`  — same hue, slightly lighter fill
  * - `mitigated`— dashed border, reduced fill (imbalance filled)
- * - `broken`   — dotted border, ghosted (kept for context only)
+ * - `broken`   — dotted outline only (kept for context; a filled ghost
+ *                stack of hundreds of dead zones drowns the chart)
  */
 export function zoneStyle(dir: VizDir, state: VizZoneState = 'fresh'): ZoneStyle {
   const hue = ZONE_BASE[dir].hue;
@@ -103,13 +104,13 @@ export function zoneStyle(dir: VizDir, state: VizZoneState = 'fresh'): ZoneStyle
     fresh: 0.22,
     touched: 0.14,
     mitigated: 0.08,
-    broken: 0.04,
+    broken: 0,
   };
   const strokeAlpha: Record<VizZoneState, number> = {
     fresh: 0.9,
     touched: 0.75,
     mitigated: 0.6,
-    broken: 0.35,
+    broken: 0.22,
   };
   const dash: Record<VizZoneState, string | undefined> = {
     fresh: undefined,

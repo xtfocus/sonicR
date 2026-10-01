@@ -14,8 +14,8 @@
 
 import { computeLayout } from './layout';
 import type { PlotLayout } from './layout';
-import { getTheme, zoneStyle } from './theme';
-import type { ChartSpec, MarkerOverlay, Overlay, ZoneOverlay } from './types';
+import { getTheme, zoneStyle, type Theme } from './theme';
+import type { ChartSpec, LevelOverlay, MarkerOverlay, Overlay, ZoneOverlay } from './types';
 
 const ESTIMATED_CHAR_WIDTH = 0.62;
 
@@ -59,7 +59,7 @@ function markerPath(o: MarkerOverlay, x: number, y: number, size: number): strin
   }
 }
 
-function renderZone(o: ZoneOverlay, layout: PlotLayout, out: string[]): void {
+function renderZone(o: ZoneOverlay, layout: PlotLayout, theme: Theme, out: string[]): void {
   const style = zoneStyle(o.dir, o.state ?? 'fresh');
   const x1 = layout.xForIndex(layout.indexOfTime(o.fromTime));
   const x2 = o.toTime != null ? layout.xForIndex(layout.indexOfTime(o.toTime)) : layout.area.x + layout.area.width;
@@ -74,11 +74,21 @@ function renderZone(o: ZoneOverlay, layout: PlotLayout, out: string[]): void {
   );
   if (o.label != null && o.label !== '') {
     const fontSize = 12;
-    const maxChars = Math.floor(w / (ESTIMATED_CHAR_WIDTH * fontSize));
-    const label = o.label.length > maxChars && maxChars > 3 ? `${o.label.slice(0, maxChars - 1)}…` : o.label;
-    if (maxChars > 3) {
+    if (estimateWidth(o.label, fontSize) + 8 <= w) {
       out.push(
-        `<text x="${(left + 4).toFixed(1)}" y="${(yTop + fontSize).toFixed(1)}" font-size="${fontSize}" fill="${style.labelColor}" opacity="0.9">${esc(label)}</text>`
+        `<text x="${(left + 4).toFixed(1)}" y="${(yTop + fontSize).toFixed(1)}" font-size="${fontSize}" fill="${style.labelColor}" opacity="0.9">${esc(o.label)}</text>`
+      );
+    } else {
+      // Zone too narrow to hold its label (fresh POIs hugging the right
+      // edge): chip-backed label just left of the rect instead of a
+      // truncated "FVG …" fragment.
+      const lw = estimateWidth(o.label, fontSize);
+      const chipX = Math.max(layout.area.x + 2, left - lw - 12);
+      out.push(
+        `<rect x="${chipX.toFixed(1)}" y="${(yTop - 2).toFixed(1)}" width="${(lw + 6).toFixed(1)}" height="16" fill="${theme.background}" opacity="0.75" />`
+      );
+      out.push(
+        `<text x="${(chipX + 3).toFixed(1)}" y="${(yTop + fontSize - 2).toFixed(1)}" font-size="${fontSize}" fill="${style.labelColor}">${esc(o.label)}</text>`
       );
     }
   }
@@ -123,7 +133,7 @@ export function renderSvg(spec: ChartSpec, layoutDefaults = { width: 1600, heigh
 
   // Zones (under candles).
   for (const o of spec.overlays) {
-    if (o.type === 'zone') renderZone(o, layout, parts);
+    if (o.type === 'zone') renderZone(o, layout, theme, parts);
   }
 
   // Candles.
@@ -195,19 +205,26 @@ export function renderSvg(spec: ChartSpec, layoutDefaults = { width: 1600, heigh
     }
   }
 
-  // Levels.
-  for (const o of spec.overlays) {
-    if (o.type !== 'level') continue;
-    const y = layout.yForPrice(o.price);
+  // Levels: lines always; labels top-to-bottom with a minimum vertical
+  // gap so dense equal-high/low pools don't stamp on each other.
+  const levelItems = spec.overlays
+    .filter((o): o is LevelOverlay => o.type === 'level')
+    .map((o) => ({ o, y: layout.yForPrice(o.price) }))
+    .sort((a, b) => a.y - b.y);
+  for (const { o, y } of levelItems) {
     parts.push(
       `<line x1="${area.x}" y1="${y.toFixed(1)}" x2="${area.x + area.width}" y2="${y.toFixed(1)}" stroke="${o.color ?? theme.levelDefault}" stroke-width="1"${o.dashed ? ' stroke-dasharray="6 4"' : ''} />`
     );
-    if (o.label != null && o.label !== '') {
-      const w = estimateWidth(o.label, 12);
-      const x = area.x + area.width - w - 8;
-      parts.push(`<rect x="${x.toFixed(1)}" y="${(y - 16).toFixed(1)}" width="${(w + 8).toFixed(1)}" height="16" fill="${theme.background}" opacity="0.75" />`);
-      parts.push(`<text x="${(x + 4).toFixed(1)}" y="${(y - 4).toFixed(1)}" font-size="12" fill="${o.color ?? theme.levelDefault}">${esc(o.label)}</text>`);
-    }
+  }
+  let lastLabelY = -Infinity;
+  for (const { o, y } of levelItems) {
+    if (o.label == null || o.label === '') continue;
+    if (y - lastLabelY < 15) continue;
+    lastLabelY = y;
+    const w = estimateWidth(o.label, 12);
+    const x = area.x + area.width - w - 8;
+    parts.push(`<rect x="${x.toFixed(1)}" y="${(y - 16).toFixed(1)}" width="${(w + 8).toFixed(1)}" height="16" fill="${theme.background}" opacity="0.75" />`);
+    parts.push(`<text x="${(x + 4).toFixed(1)}" y="${(y - 4).toFixed(1)}" font-size="12" fill="${o.color ?? theme.levelDefault}">${esc(o.label)}</text>`);
   }
 
   // Verticals.
@@ -218,9 +235,10 @@ export function renderSvg(spec: ChartSpec, layoutDefaults = { width: 1600, heigh
       `<line x1="${x.toFixed(1)}" y1="${area.y}" x2="${x.toFixed(1)}" y2="${area.y + area.height}" stroke="${o.color ?? theme.accent}" stroke-width="1" stroke-dasharray="4 4" />`
     );
     if (o.label != null && o.label !== '') {
-      const w = estimateWidth(o.label, 12);
-      const x2 = clampX(x + 4, layout);
-      parts.push(`<rect x="${x2.toFixed(1)}" y="${(area.y + 4).toFixed(1)}" width="${(w + 6).toFixed(1)}" height="16" fill="${theme.background}" opacity="0.75" />`);
+      const w = estimateWidth(o.label, 12) + 6;
+      let x2 = x + 4;
+      if (x2 + w > area.x + area.width) x2 = area.x + area.width - w;
+      parts.push(`<rect x="${x2.toFixed(1)}" y="${(area.y + 4).toFixed(1)}" width="${w.toFixed(1)}" height="16" fill="${theme.background}" opacity="0.75" />`);
       parts.push(`<text x="${(x2 + 3).toFixed(1)}" y="${(area.y + 16).toFixed(1)}" font-size="12" fill="${o.color ?? theme.accent}">${esc(o.label)}</text>`);
     }
   }
@@ -242,9 +260,12 @@ export function renderSvg(spec: ChartSpec, layoutDefaults = { width: 1600, heigh
       `<path d="${markerPath(o, x, y, size)}" fill="${fill}" stroke="${stroke}" stroke-width="2" />`
     );
     if (o.label != null && o.label !== '') {
-      const w = estimateWidth(o.label, 12);
-      const lx = clampX(x + size + 4, layout);
-      parts.push(`<rect x="${lx.toFixed(1)}" y="${(y - 10).toFixed(1)}" width="${(w + 6).toFixed(1)}" height="16" fill="${theme.background}" opacity="0.75" />`);
+      const w = estimateWidth(o.label, 12) + 6;
+      // Near the right edge the chip would run off the canvas — pin it
+      // to the plot's right boundary instead.
+      let lx = x + size + 4;
+      if (lx + w > area.x + area.width) lx = area.x + area.width - w;
+      parts.push(`<rect x="${lx.toFixed(1)}" y="${(y - 10).toFixed(1)}" width="${w.toFixed(1)}" height="16" fill="${theme.background}" opacity="0.75" />`);
       parts.push(`<text x="${(lx + 3).toFixed(1)}" y="${(y + 2).toFixed(1)}" font-size="12" fill="${o.color ?? theme.text}">${esc(o.label)}</text>`);
     }
   }

@@ -12,7 +12,7 @@
  * `signalChart` ↔ `signal`.
  */
 
-import type { OhlcvBar, Poi } from '../analysis/types';
+import type { BosEvent, ChochEvent, LiquidityLevel, OhlcvBar, Pivot, Poi, Zone } from '../analysis/types';
 import { classifyStructure, detectBos, detectChoch, findPivots } from '../analysis/structure';
 import { findFvgs, findOrderBlocks, findSupplyDemand, liquidityLevels, mergeZones } from '../analysis/zones';
 import { entrySignals, findPois } from '../analysis/signal';
@@ -21,7 +21,6 @@ import {
   barsWindow,
   bosMarkers,
   chochMarkers,
-  legLabels,
   liquidityOverlays,
   pivotPolyline,
   signalOverlays,
@@ -64,31 +63,45 @@ function identity(symbol: string, timeframe: string): { symbol: string; timefram
 }
 
 /**
- * Structure map: candles + zigzag + A/B/C labels + BOS/CHoCH markers.
- * The subtitle always carries the structure verdict (HH_HL / LH_LL /
- * RANGE) so the chart answers "what is the market doing?" on sight.
+ * Structure map: candles + zigzag + BOS/CHoCH markers (labels on the
+ * latest event of each kind only — a chip per event collides into an
+ * unreadable stack on dense ranges). The subtitle always carries the
+ * structure verdict (HH_HL / LH_LL / RANGE) so the chart answers "what
+ * is the market doing?" on sight.
  */
+export type StructureChartResult = {
+  spec: ChartSpec;
+  analysis: {
+    structure: string;
+    pivots: Pivot[];
+    bos: BosEvent[];
+    choch: ChochEvent[];
+  };
+};
+
 export function structureChart(
   bars: OhlcvBar[],
   symbol: string,
   timeframe: string,
   opts: CompositeOptions = {}
-): ChartSpec {
+): StructureChartResult {
   const k = opts.k ?? 5;
   const pivots = findPivots(bars, k);
   const structure = classifyStructure(pivots);
+  const bos = detectBos(bars, pivots);
+  const choch = detectChoch(bars, pivots);
   const overlays: Overlay[] = [
     pivotPolyline(pivots),
-    ...legLabels(pivots),
-    ...bosMarkers(detectBos(bars, pivots)),
-    ...chochMarkers(detectChoch(bars, pivots)),
+    ...bosMarkers(bos, { labels: 'last' }),
+    ...chochMarkers(choch, { labels: 'last' }),
   ];
-  return baseSpec(bars, {
+  const spec = baseSpec(bars, {
     ...identity(symbol, timeframe),
     title: opts.title ?? `${symbol} ${timeframe} — structure`,
     subtitle: `${structure} · ${pivots.length} pivots · k=${k}`,
     provenance: { fn: 'structure', params: { k } },
   }, overlays, opts.layout);
+  return { spec, analysis: { structure, pivots, bos, choch } };
 }
 
 /**
@@ -96,12 +109,17 @@ export function structureChart(
  * lifecycle styling. Fresh/touched zones stand out; broken ghosts stay
  * for context.
  */
+export type ZonesChartResult = {
+  spec: ChartSpec;
+  analysis: { zones: Zone[] };
+};
+
 export function zonesChart(
   bars: OhlcvBar[],
   symbol: string,
   timeframe: string,
   opts: CompositeOptions = {}
-): ChartSpec {
+): ZonesChartResult {
   const k = opts.k ?? 5;
   const pivots = findPivots(bars, k);
   const zones = mergeZones([
@@ -110,13 +128,19 @@ export function zonesChart(
     ...findSupplyDemand(bars, pivots),
   ]);
   const fresh = zones.filter((z) => z.state === 'fresh' || z.state === 'touched').length;
-  return baseSpec(bars, {
+  const spec = baseSpec(bars, {
     ...identity(symbol, timeframe),
     title: opts.title ?? `${symbol} ${timeframe} — zones`,
     subtitle: `${zones.length} zones · ${fresh} still tradeable (fresh/touched) · k=${k}`,
     provenance: { fn: 'zones-merged', params: { k } },
   }, zoneOverlays(zones), opts.layout);
+  return { spec, analysis: { zones } };
 }
+
+export type LiquidityChartResult = {
+  spec: ChartSpec;
+  analysis: { levels: LiquidityLevel[] };
+};
 
 /**
  * Liquidity map: candles + old extremes + equal-high/low pools — the
@@ -127,15 +151,16 @@ export function liquidityChart(
   symbol: string,
   timeframe: string,
   opts: CompositeOptions = {}
-): ChartSpec {
+): LiquidityChartResult {
   const k = opts.k ?? 5;
   const levels = liquidityLevels(bars, findPivots(bars, k), { tolerance: 0.001 });
-  return baseSpec(bars, {
+  const spec = baseSpec(bars, {
     ...identity(symbol, timeframe),
     title: opts.title ?? `${symbol} ${timeframe} — liquidity`,
     subtitle: `${levels.filter((l) => l.kind.startsWith('equal')).length} equal pools · old high ${levels.find((l) => l.kind === 'old_high')?.price.toFixed(0) ?? '—'} · old low ${levels.find((l) => l.kind === 'old_low')?.price.toFixed(0) ?? '—'}`,
     provenance: { fn: 'liquidity', params: { k } },
   }, liquidityOverlays(levels), opts.layout);
+  return { spec, analysis: { levels } };
 }
 
 /** Result of {@link signalChart}: the spec plus the analysis it encodes. */

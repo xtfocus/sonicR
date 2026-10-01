@@ -52,39 +52,67 @@ export function legLabels(pivots: Pivot[]): TextOverlay[] {
   }));
 }
 /** BOS events as bar markers with labels. */
-export function bosMarkers(events: BosEvent[]): MarkerOverlay[] {
-  return events.map((e) => ({
+export function bosMarkers(events: BosEvent[], opts: { labels?: boolean | 'last' } = {}): MarkerOverlay[] {
+  return events.map((e, i) => ({
     type: 'marker',
     time: e.time,
     shape: e.dir === 'bull' ? ('triangle-up' as const) : ('triangle-down' as const),
-    label: 'BOS',
+    label: markerLabel('BOS', opts.labels, i === events.length - 1),
   }));
 }
 
 /** CHoCH events as markers — visually distinct via label. */
-export function chochMarkers(events: ChochEvent[]): MarkerOverlay[] {
-  return events.map((e) => ({
+export function chochMarkers(events: ChochEvent[], opts: { labels?: boolean | 'last' } = {}): MarkerOverlay[] {
+  return events.map((e, i) => ({
     type: 'marker',
     time: e.time,
     shape: e.dir === 'bull' ? ('arrow-up' as const) : ('arrow-down' as const),
-    label: 'CHoCH',
+    label: markerLabel('CHoCH', opts.labels, i === events.length - 1),
   }));
 }
 
 /**
+ * Marker label policy: `true` labels every marker, `false` none, 'last'
+ * only the most recent one. Dense history charts use 'last' — a label
+ * chip per event collides into unreadable stacks, while the latest event
+ * (where the eyes go) still names its kind; identical shapes elsewhere
+ * read as the same event type.
+ */
+function markerLabel(text: string, mode: boolean | 'last' | undefined, isLast: boolean): string | undefined {
+  if (mode === true || mode == null) return text;
+  if (mode === 'last') return isLast ? text : undefined;
+  return undefined;
+}
+
+/**
  * Zones (analysis output) → zone overlays. Label packs the confluence
- * story: provenance kinds + state, e.g. `OB+FVG · fresh`.
+ * story: provenance kinds + state, e.g. `OB+FVG · fresh`. Only still
+ * tradeable zones (fresh/touched) carry labels — a label per dead zone
+ * turns dense ranges into an illegible text wall; the legend + fill
+ * grammar already encodes lifecycle for the rest.
+ *
+ * Dead zones (mitigated/broken) also stop at `invalidatedAt` — a zone
+ * whose reason is consumed keeps no claim on the space to the right, and
+ * hundreds of outlines stretched to the right edge weave noise exactly
+ * where the live price action sits.
  */
 export function zoneOverlays(zones: Array<Zone | Poi>): ZoneOverlay[] {
-  return zones.map((z) => ({
-    type: 'zone',
-    top: z.top,
-    bottom: z.bottom,
-    fromTime: z.tCreated,
-    dir: z.dir,
-    state: z.state,
-    label: `${z.provenance.join('+')}${'confluenceCount' in z && z.confluenceCount > 1 ? ` (×${z.confluenceCount})` : ''} · ${z.state}`,
-  }));
+  return zones.map((z) => {
+    const dead = z.state === 'mitigated' || z.state === 'broken';
+    return {
+      type: 'zone',
+      top: z.top,
+      bottom: z.bottom,
+      fromTime: z.tCreated,
+      toTime: dead && z.invalidatedAt != null ? z.invalidatedAt : undefined,
+      dir: z.dir,
+      state: z.state,
+      label:
+        z.state === 'fresh' || z.state === 'touched'
+          ? `${z.provenance.join('+')}${'confluenceCount' in z && z.confluenceCount > 1 ? ` (×${z.confluenceCount})` : ''} · ${z.state}`
+          : undefined,
+    };
+  });
 }
 
 /** Liquidity levels → labeled horizontal lines. */

@@ -24,6 +24,7 @@ import {
 import { sourceCsvSha256 } from './dataset';
 import { barsToCsv } from '../data-export';
 import { renderPng } from '../viz/png';
+import type { EntrySignalResult } from '../analysis/signal';
 
 export type PersistChartOutcomeInput = {
   caseId: string;
@@ -46,10 +47,14 @@ export function persistChartOutcome(input: PersistChartOutcomeInput): ArtifactRe
     saveCaseBars(caseId, ltfTimeframe, outcome.ltfBars, barsToCsv(outcome.ltfBars));
   }
   if (fn != null && fn !== '') {
-    saveCaseAnalysis(caseId, fn, outcome.signal ?? { fn, caption: outcome.caption });
+    if (outcome.analysis == null) {
+      throw new Error(`chart outcome for '${fn}' carries no analysis snapshot`);
+    }
+    saveCaseAnalysis(caseId, fn, outcome.analysis);
   }
   setCaseSourceHash(caseId, sourceCsvSha256(input.csvPath));
 
+  const signal = isSignalResult(outcome.analysis) ? outcome.analysis : undefined;
   return saveChart({
     caseId,
     rendered,
@@ -58,12 +63,17 @@ export function persistChartOutcome(input: PersistChartOutcomeInput): ArtifactRe
     start,
     end,
     ltfTimeframe,
-    analysisDigest: outcome.signal
+    analysisDigest: signal
       ? {
-          bias: outcome.signal.bias,
-          pois: outcome.signal.pois.length,
-          signals: outcome.signal.signals,
+          bias: signal.bias,
+          pois: signal.pois.length,
+          signals: signal.signals,
         }
       : undefined,
   });
+}
+
+/** Only `signal` outcomes carry the POI/signal lists the digest quotes. */
+function isSignalResult(analysis: ChartOutcome['analysis'] | undefined): analysis is EntrySignalResult {
+  return analysis != null && 'pois' in analysis && 'signals' in analysis;
 }

@@ -111,7 +111,8 @@ while (cursor != null && cursor <= endSec) {
   cursor = nextMonth;
   if (nextMonth >= endSec) break;
 }
-const regime = marketBias(htfAll.bars, 5);
+const kNum = k != null && k !== '' ? Number(k) : 5;
+const regime = marketBias(htfAll.bars, kNum);
 console.log(`Regime: ${regime.structure} → ${regime.bias} (${windows.length} monthly window(s))`);
 
 // 2. The standard chart set, persisted via the shared case writer.
@@ -142,12 +143,15 @@ const chartRecords = core.map(({ fn, build }) => {
 });
 
 // 3. The regime timeline (no analysis snapshot — it is its own composite).
-const timeline = biasTimeline(windows, 'USTEC', { k: k != null ? Number(k) : 5 });
+//    Its per-window verdicts are quoted into the digest and summary.json:
+//    a narrative writer trusts JSON over pixels, so the verdicts must
+//    live in both.
+const timeline = biasTimeline(windows, 'USTEC', { k: kNum });
 const timelineRecord = saveChart({
   caseId,
-  rendered: renderPng(timeline),
-  spec: timeline,
-  caption: `${timeline.meta.title} — ${timeline.meta.subtitle}`,
+  rendered: renderPng(timeline.spec),
+  spec: timeline.spec,
+  caption: `${timeline.spec.meta.title} — ${timeline.spec.meta.subtitle}`,
   start,
   end,
 });
@@ -175,7 +179,7 @@ const figures = [...chartRecords, timelineRecord]
 
 const signalRecord = chartRecords.find((r) => r.provenance.fn === 'signal');
 const qualifiedSignals = countSignals(signalRecord);
-const digest = `USTEC ${timeframe} ${start} → ${end} — regime ${regime.structure} (${regime.bias}) · ${windows.length} monthly window(s) (${windows.map((w) => w.label).join(', ')}) · ${chartRecords.length + 1} charts · ${qualifiedSignals} qualifying signal(s) at minRR ${minRR ?? 2}. ${htfAll.clippedFromEnd ? 'The requested end ran past the feed: the last month(s) are sparse clipped data, not a quiet market.' : ''} Edit this summary and add the narrative.`;
+const digest = `USTEC ${timeframe} ${start} → ${end} — regime ${regime.structure} (${regime.bias}) · ${windows.length} monthly window(s) (${timeline.windows.map((w) => `${w.label} ${w.structure}`).join(', ')}) · ${chartRecords.length + 1} charts · ${qualifiedSignals} qualifying signal(s) at minRR ${minRR ?? 2}.${htfAll.clippedFromEnd ? ' The requested end ran past the feed: the last month(s) are sparse clipped data, not a quiet market.' : ''}`;
 
 let reportHtml = readFileSync(TEMPLATE_PATH, 'utf8');
 // Drop the LLM guidance comment, then swap placeholder paragraph → digest
@@ -184,6 +188,11 @@ reportHtml = reportHtml.split('      <!-- LLM: ')[0] + reportHtml.slice(reportHt
 reportHtml = reportHtml.replace(
   /<p id="report-summary"[^>]*>[\s\S]*?<\/p>/,
   `<p id="report-summary">${esc(digest)}</p>`
+);
+// Fill the meta line's evaluation range (template ships an em dash).
+reportHtml = reportHtml.replace(
+  /<span class="report-range">[^<]*<\/span>/,
+  `<span class="report-range">${esc(`${start} → ${end}`)}</span>`
 );
 // Replace the figure-template comment block with the real figures.
 const figStart = reportHtml.indexOf('<!-- Figure template');
@@ -199,7 +208,9 @@ const summary = {
   timeframe,
   ltfTimeframe,
   regime: { structure: regime.structure, bias: regime.bias, pivotCount: regime.pivotCount },
-  monthlyWindows: windows.map((w) => w.label),
+  // Per-window regime verdicts (the timeline chart's bands, as data) —
+  // quoted by narrative writers instead of re-derived from pixels.
+  windows: timeline.windows,
   // The requested end ran past the data (e.g. data ends 2026-03-03):
   // monthly windows after that are sparse; quote this when interpreting
   // the bias timeline.
